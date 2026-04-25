@@ -11,7 +11,7 @@ def format_time(seconds: float) -> str:
     
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
 
-def generate_srt(segments, output_srt_path: str):
+def generate_srt(segments, output_srt_path: str, progress_callback=None):
     """将识别片段格式化并写入 .srt 文件"""
     print(f"[*] 正在生成字幕文件: {output_srt_path}")
     
@@ -27,5 +27,8 @@ def generate_srt(segments, output_srt_path: str):
             
             # 实时在控制台打印进度
             print(f"[{start_time} -> {end_time}] {text}")
+            
+            if progress_callback:
+                progress_callback(start_time, end_time, text)
             
     print(f"[*] 字幕生成完毕！")

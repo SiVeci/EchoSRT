@@ -1,32 +1,35 @@
 # AutoSRT 🎬
 
-本地视频自动提取字幕工具。
+基于 `faster-whisper` 的本地视频自动字幕提取工具
 
-## 系统要求
+## 核心特性
+- **极简操作**：浏览器拖拽上传视频，一键生成同名 `.srt` 字幕。
+- **参数可视化**：支持高阶参数调优。
+- **自动硬件加速**：自动探测系统是否包含 NVIDIA 显卡并启用 GPU 加速；无显卡或 Mac 环境下自动平滑回退至 CPU 运行。
 
-- **操作系统**：Windows / Linux / macOS
-- **环境依赖**：Python >= 3.8
-- **硬件配置**：推荐使用配备 NVIDIA 显卡的电脑（程序会自动启用 GPU 加速）。若无独立显卡或在 Mac 环境下，程序会自动回退至纯 CPU 模式运行。
-- **外部组件**：程序依赖 `FFmpeg` 提取音频。
-  - *Windows 用户*：可直接将下载好的 `ffmpeg.exe` 放置在项目的 `ffmpeg/bin/` 目录下。
-  - *Linux / macOS 用户*：请通过包管理器全局安装（如 `sudo apt install ffmpeg` 或 `brew install ffmpeg`）。
+## 环境准备
+- Python >= 3.8
+- FFmpeg 
+  - *Windows*：可直接将 `ffmpeg.exe` 放入项目的 `ffmpeg/bin/` 目录下。
+  - *Mac/Linux*：请通过包管理器全局安装（如 `brew install ffmpeg` 或 `sudo apt install ffmpeg`）。
 
 ## 使用方法
 
-1. **安装依赖**
-   ```bash
-   pip install faster-whisper
-   ```
+1. **安装运行依赖**
+```bash
+pip install faster-whisper fastapi "uvicorn[standard]" python-multipart websockets
+```
 
-2. **准备配置文件**
-   修改 `config.example.json` ，并重命名为 `config.json`。
+2. **一键启动 WebUI**
+   - **Windows 用户**：直接双击运行 `start.bat`
+   - **Mac / Linux 用户**：在终端运行 `./start.sh` （首次运行前可能需要执行 `chmod +x start.sh`）
 
-3. **运行程序**
-   ```bash
-   python main.py
-   ```
+脚本会自动启动前后端服务，并在浏览器中为你打开 `http://127.0.0.1:8080` 的工作台。
 
-4. **生成字幕**
-   根据控制台提示，将视频文件直接拖拽到窗口中并按回车，即可在视频同目录下自动生成同名的 `.srt` 字幕文件。
+> 💡 **保留的 CLI 命令行模式**：依然可以在终端直接运行 `python main.py` 在命令行提取字幕（首次运行会自动初始化配置文件）。
 
-> 💡 **提示**：如需修改模型大小、语言或提示词等进阶参数，请直接编辑 `config.json` 文件。
+## TODO
+
+- [ ] **HTTP 代理支持**：配置本地代理以加速 Hugging Face 大模型的下载。
+- [ ] **在线模型聚合**：在模型选择界面直接获取并展示 Hugging Face 上的可用模型列表，支持本地缺失时自动下载。
+- [ ] **Docker 容器化部署**：提供 Docker 镜像封装，方便在 NAS 或云服务器上一键运行部署。

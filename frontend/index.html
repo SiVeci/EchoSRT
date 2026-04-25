@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoSRT WebUI</title>
+  
+  <!-- 引入 Element Plus 的 CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <style>
+    body {
+      margin: 0;
+      background-color: #f5f7fa;
+      font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+    }
+    .header {
+      background-color: #409EFF;
+      color: white;
+      text-align: center;
+      line-height: 60px;
+      font-size: 24px;
+      font-weight: bold;
+      box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+    }
+    .main-container {
+      max-width: 1200px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .box-card {
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .log-container {
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      height: 400px;
+      overflow-y: auto;
+      border-radius: 4px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .log-info { color: #569cd6; }
+    .log-success { color: #608b4e; }
+    .log-warning { color: #d7ba7d; }
+    .log-error { color: #f44336; }
+    .log-progress { color: #4ec9b0; font-weight: bold;}
+    .info-icon { margin-left: 4px; cursor: pointer; color: #909399; vertical-align: middle; }
+    .info-icon:hover { color: #409EFF; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <el-container>
+      <el-header class="header">🎬 AutoSRT 智能字幕工作台</el-header>
+      <el-main class="main-container">
+        
+        <el-row :gutter="20">
+          <!-- 左侧：设置与上传 (加宽到10，容纳更多参数) -->
+          <el-col :span="10">
+            
+            <!-- 基础设置卡片 -->
+            <el-card class="box-card" shadow="hover">
+              <template #header>
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>⚙️ 基础设置 (Basic)</span>
+                  <el-button type="info" size="small" plain @click="restoreDefaultConfig">恢复默认</el-button>
+                </div>
+              </template>
+              <el-form :model="configForm" label-width="120px" size="default" label-position="left">
+                <el-form-item>
+                  <template #label>
+                    <span class="label-with-icon">
+                      模型大小
+                      <el-tooltip content="模型体积越大，识别准确率越高，但需要的显存和处理时间也成倍增加。" placement="top" trigger="click">
+                        <el-icon class="info-icon" @click.prevent><question-filled></question-filled></el-icon>
+                      </el-tooltip>
+                    </span>
+                  </template>
+                  <el-select v-model="configForm.model_settings.model_size" placeholder="选择模型">
+                    <el-option label="Tiny (最快)" value="tiny"></el-option>
+                    <el-option label="Base" value="base"></el-option>
+                    <el-option label="Small" value="small"></el-option>
+                    <el-option label="Medium (推荐)" value="medium"></el-option>
+                    <el-option label="Large-v2 (高精度)" value="large-v2"></el-option>
+                    <el-option label="Large-v3 (最高精度)" value="large-v3"></el-option>
+                  </el-select>
+                </el-form-item>
+                <el-form-item>
+                  <template #label>
+                    <span class="label-with-icon">
+                      识别语言
+                      <el-tooltip content="指定原视频语言。自动检测可能在无声前奏中误判，明确指定可提升准确率和速度。" placement="top" trigger="click">
+                        <el-icon class="info-icon" @click.prevent><question-filled></question-filled></el-icon>
+                      </el-tooltip>
+                    </span>
+                  </template>
+                  <el-select v-model="configForm.transcribe_settings.language" placeholder="自动检测" clearable>
+                    <el-option label="自动检测" :value="null"></el-option>
+                    <el-option label="中文 (zh)" value="zh"></el-option>
+                    <el-option label="英文 (en)" value="en"></el-option>
+                    <el-option label="日语 (ja)" value="ja"></el-option>
+                  </el-select>
+                </el-form-item>
+              </el-form>
+              
+              <!-- 高级设置折叠面板 -->
+              <el-collapse style="margin-top: 15px;">
+                <el-collapse-item title="🛠️ 高级设置 (Advanced Settings)" name="1">
+                  
+                  <el-tabs type="border-card" size="small">
+                    
+                    <!-- 第一类：文本与上下文 -->
+                    <el-tab-pane label="📝 文本/上下文">
+                      <el-form :model="configForm" size="small" label-position="top">
+                        <el-form-item>
+                          <template #label>
+                            Initial Prompt (初始提示词)
+                            <el-tooltip content="提供专有名词、人名或特定语言风格，引导模型正确输出。例如：'这是一个关于 AutoSRT 的教程。'" placement="top">
+                              <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                            </el-tooltip>
+                          </template>
+                          <el-input type="textarea" v-model="configForm.transcribe_settings.initial_prompt" placeholder="引导词、专有名词、人名等 (空则不使用)"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            Hotwords (热词增强)
+                            <el-tooltip content="提供热词，模型会在遇到模糊发音时优先匹配这些词汇（部分底层引擎可能不支持）。" placement="top">
+                              <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                            </el-tooltip>
+                          </template>
+                          <el-input type="textarea" v-model="configForm.transcribe_settings.hotwords" placeholder="希望模型优先识别的词语"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            前置 / 后置 标点符号
+                            <el-tooltip content="模型用于判断句子切分和结尾的标点集合。普通用户保持默认即可。" placement="top">
+                              <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                            </el-tooltip>
+                          </template>
+                          <el-row :gutter="10">
+                            <el-col :span="12"><el-input v-model="configForm.transcribe_settings.prepend_punctuations" placeholder="前置标点"></el-input></el-col>
+                            <el-col :span="12"><el-input v-model="configForm.transcribe_settings.append_punctuations" placeholder="后置标点"></el-input></el-col>
+                          </el-row>
+                        </el-form-item>
+                        <el-row>
+                          <el-col :span="12">
+                            <el-tooltip content="让模型结合上一句的内容来识别当前句。若视频背景噪音大，关闭此项有时能减少胡言乱语（幻觉）。" placement="top">
+                              <el-checkbox v-model="configForm.transcribe_settings.condition_on_previous_text">参考上一句</el-checkbox>
+                            </el-tooltip>
+                          </col>
+                          <el-col :span="12">
+                            <el-tooltip content="如果模型预测结果为纯空白，强制其重试生成文字。建议保持开启。" placement="top">
+                              <el-checkbox v-model="configForm.transcribe_settings.suppress_blank">抑制空白输出</el-checkbox>
+                            </el-tooltip>
+                          </col>
+                        </el-row>
+                        <el-form-item style="margin-top: 15px;">
+                          <template #label>
+                            抑制词 ID 数组 (Suppress Tokens)
+                            <el-tooltip content="强制禁止模型输出特定的 Token 内部 ID。-1 通常代表抑制某些非发音标记。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input v-model="suppressTokensStr" placeholder="例如: -1"></el-input>
+                        </el-form-item>
+                      </el-form>
+                    </el-tab-pane>
+
+                    <!-- 第二类：解码与回退策略 -->
+                    <el-tab-pane label="🧮 解码/搜索">
+                      <el-form :model="configForm" size="small" label-position="right" label-width="140px">
+                        <el-form-item>
+                          <template #label>
+                            Beam Size
+                            <el-tooltip content="束搜索候选数量。值越大（如5-10）结果越准但越慢；设为1（贪婪解码）速度最快但可能出错。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.beam_size" :min="1" :max="20"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            Best Of
+                            <el-tooltip content="当非贪婪解码时，保留的最佳候选结果数。一般与 Beam Size 保持一致。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.best_of" :min="1" :max="20"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            Patience
+                            <el-tooltip content="束搜索耐心因子。默认 1.0。调大可探索更多可能路径，改善结果，但增加耗时。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.patience" :step="0.1" :min="0"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            长度惩罚
+                            <el-tooltip content="控制输出句子的长短倾向。小于 1 倾向于输出短句，大于 1 倾向于长句。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.length_penalty" :step="0.1"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            重复惩罚
+                            <el-tooltip content="惩罚重复词汇，防止模型陷入死循环复读。1.0 为无惩罚，值越大惩罚越重。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.repetition_penalty" :step="0.1" :min="1.0"></el-input-number>
+                        </el-form-item>
+                        
+                        <el-divider border-style="dashed">
+                          Temperature 递进数组
+                          <el-tooltip content="当识别质量不达标时，模型会按此数组依次提升温度值，增加随机性并重试解码。" placement="top">
+                            <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                          </el-tooltip>
+                        </el-divider>
+                        
+                        <!-- 动态温度数组交互 -->
+                        <div v-for="(temp, index) in configForm.transcribe_settings.temperature" :key="index" style="display: flex; align-items: center; margin-bottom: 8px;">
+                          <el-tag type="info" style="margin-right: 10px; width: 40px; text-align: center;"># {{ index + 1 }}</el-tag>
+                          <el-input-number v-model="configForm.transcribe_settings.temperature[index]" :step="0.2" :min="0.0" :max="1.0" style="width: 110px;"></el-input-number>
+                          <el-button type="primary" circle size="small" @click="addTemperature(index)" style="margin-left: 10px;" title="在此之后插入"><el-icon><Plus /></el-icon></el-button>
+                          <el-button type="danger" circle size="small" @click="removeTemperature(index)" :disabled="configForm.transcribe_settings.temperature.length <= 1" style="margin-left: 5px;" title="删除"><el-icon><Minus /></el-icon></el-button>
+                        </div>
+
+                      </el-form>
+                    </el-tab-pane>
+
+                    <!-- 第三类：静音与阈值 -->
+                    <el-tab-pane label="⚙️ 阈值过滤">
+                      <el-form :model="configForm" size="small" label-position="top">
+                        <el-form-item>
+                          <template #label>
+                            VAD 智能静音过滤
+                            <el-tooltip content="在识别前剔除无声/纯噪音片段。极度推荐开启，大幅提升速度并减少环境噪音导致的幻觉！" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-switch v-model="configForm.vad_settings.vad_filter" active-text="开启" inactive-text="关闭"></el-switch>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            压缩比阈值 (Compression Ratio)
+                            <el-tooltip content="当某段文本的压缩比高于此值时，模型会认为自己在重复废话，并触发温度回退重试。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.compression_ratio_threshold" :step="0.1" style="width: 100%;"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            对数概率阈值 (Log Prob)
+                            <el-tooltip content="如果识别结果的平均置信度（Log Prob）低于此值，将触发温度回退重试。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.log_prob_threshold" :step="0.1" style="width: 100%;"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            无声判定阈值 (No Speech)
+                            <el-tooltip content="如果某段音频被判定为完全静音的概率高于此值，将直接跳过不输出文字。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input-number v-model="configForm.transcribe_settings.no_speech_threshold" :step="0.05" :min="0" :max="1" style="width: 100%;"></el-input-number>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            幻觉静音阈值 (Hallucination Silence)
+                            <el-tooltip content="遇到长达此设置（秒）的静音时，强行截断当前句子，防止模型产生幻觉。空则默认禁用。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input v-model="nullableFields.hallucination_silence_threshold" placeholder="空则禁用 (Null)"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            语言探测阈值 (Language Detection)
+                            <el-tooltip content="在多语言模式下，如果检测到新语言的置信度低于此值，将强制退回前一个语言的设定。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-slider v-model="configForm.transcribe_settings.language_detection_threshold" :min="0" :max="1" :step="0.1" show-input></el-slider>
+                        </el-form-item>
+                      </el-form>
+                    </el-tab-pane>
+
+                    <!-- 第四类：系统与杂项 -->
+                    <el-tab-pane label="🗃️ 杂项">
+                      <el-form :model="configForm" size="small" label-position="right" label-width="140px">
+                        <el-form-item>
+                          <template #label>
+                            HF Token
+                            <el-tooltip content="Hugging Face 访问令牌。用于自动下载某些受权限保护的模型资产。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input v-model="configForm.secrets.hf_token" type="password" show-password placeholder="Hugging Face Token (选填)"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            翻译为英文
+                            <el-tooltip content="【注意】无论原视频是什么语言，都会被直接听译并输出纯英文字幕（单向操作）。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-switch v-model="configForm.transcribe_settings.task" active-value="translate" inactive-value="transcribe" active-text="开启" inactive-text="关闭"></el-switch>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            多语言模式
+                            <el-tooltip content="允许在同一个音频中自动识别出交替出现的多种不同语言。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-switch v-model="configForm.transcribe_settings.multilingual"></el-switch>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            词级时间戳
+                            <el-tooltip content="精确到每一个单词的发音时间戳，而不是按长句子划分时间。会略微拖慢速度。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-switch v-model="configForm.transcribe_settings.word_timestamps"></el-switch>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            关闭时间戳
+                            <el-tooltip content="强制模型不计算和输出时间戳。警告：开启后可能导致生成 SRT 字幕文件失败！" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-switch v-model="configForm.transcribe_settings.without_timestamps" active-color="#f56c6c"></el-switch>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            最大新 Token 数
+                            <el-tooltip content="限制每次切片最多生成的文字标记数量。留空表示无限制。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input v-model="nullableFields.max_new_tokens" placeholder="空则无限制 (Null)"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            片段裁剪长度
+                            <el-tooltip content="强制将音频切分成固定的秒数送入模型。留空则由模型自动判断切分。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input v-model="nullableFields.chunk_length" placeholder="空则自动 (Null)"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                          <template #label>
+                            模型下载目录
+                            <el-tooltip content="模型文件在本地硬盘的存放路径文件夹。" placement="top"><el-icon class="info-icon"><QuestionFilled /></el-icon></el-tooltip>
+                          </template>
+                          <el-input v-model="configForm.model_settings.download_root"></el-input>
+                        </el-form-item>
+                      </el-form>
+                    </el-tab-pane>
+
+                  </el-tabs>
+                </el-collapse-item>
+              </el-collapse>
+            </el-card>
+
+            <!-- 视频上传卡片 -->
+            <el-card class="box-card" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <span>📁 上传视频</span>
+                </div>
+              </template>
+              <el-upload
+                class="upload-demo"
+                drag
+                action="#"
+                :auto-upload="true"
+                :http-request="handleUpload"
+                :show-file-list="false"
+                accept="video/*"
+                :disabled="isProcessing"
+              >
+                <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+                <div class="el-upload__text">
+                  将视频文件拖到此处，或 <em>点击上传</em>
+                </div>
+              </el-upload>
+              
+              <div v-if="currentFileName" style="margin-top: 15px; text-align: center; color: #606266;">
+                当前文件: <strong>{{ currentFileName }}</strong>
+              </div>
+
+              <div style="margin-top: 20px; text-align: center;">
+                <el-button 
+                  type="primary" 
+                  size="large" 
+                  style="width: 100%;" 
+                  @click="startTranscribe" 
+                  :loading="isProcessing"
+                  :disabled="!taskId || isProcessing"
+                >
+                  🚀 开始生成字幕
+                </el-button>
+              </div>
+            </el-card>
+
+          </el-col>
+
+          <!-- 右侧：进度与日志 (调整为 14) -->
+          <el-col :span="14">
+            <el-card class="box-card" shadow="hover" style="height: 100%;">
+              <template #header>
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>⏱️ 任务进度</span>
+                  <el-button type="success" @click="downloadSrt" :disabled="activeStep !== 4">
+                    ⬇️ 下载 SRT 字幕
+                  </el-button>
+                </div>
+              </template>
+
+              <!-- 步骤条 -->
+              <el-steps :active="activeStep" finish-status="success" align-center style="margin-bottom: 30px;">
+                <el-step title="准备就绪" description="等待上传"></el-step>
+                <el-step title="视频已上传" description="等待启动"></el-step>
+                <el-step title="提取音频" description="FFmpeg 处理中"></el-step>
+                <el-step title="语音识别" description="Whisper 推理中"></el-step>
+                <el-step title="任务完成" description="可下载字幕"></el-step>
+              </el-steps>
+
+              <!-- 日志控制台 -->
+              <div class="log-container" ref="logBox">
+                <div v-for="(log, index) in logs" :key="index" :class="'log-' + log.type">
+                  [{{ log.time }}] {{ log.message }}
+                </div>
+              </div>
+
+            </el-card>
+          </el-col>
+        </el-row>
+
+      </el-main>
+    </el-container>
+  </div>
+
+  <!-- 引入 Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- 引入 Element Plus -->
+  <script src="https://unpkg.com/element-plus"></script>
+  <!-- 引入 Element Plus 图标 -->
+  <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+
+  <script>
+    const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // 指定后端 FastAPI 接口的固定地址
+        const API_BASE = "http://127.0.0.1:8000";
+        const WS_BASE = "ws://127.0.0.1:8000";
+
+        // 状态变量
+        const configForm = reactive({
+          secrets: { hf_token: "" },
+          model_settings: { model_size: "medium" },
+          transcribe_settings: { 
+            language: null, 
+            task: "transcribe",
+            temperature: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            suppress_tokens: [-1]
+          },
+          vad_settings: { vad_filter: true }
+        });
+        
+        // 用于绑定中间状态的变量（因为 HTML 输入框返回的是字符串，而 JSON 需要特定类型）
+        const suppressTokensStr = ref("-1");
+        const nullableFields = reactive({
+          hallucination_silence_threshold: "",
+          max_new_tokens: "",
+          chunk_length: ""
+        });
+
+        const taskId = ref(null);
+        const currentFileName = ref("");
+        const activeStep = ref(0);
+        const isProcessing = ref(false);
+        const logs = ref([]);
+        const logBox = ref(null);
+
+        // 添加日志并自动滚动到底部
+        const addLog = (message, type = "info") => {
+          const time = new Date().toLocaleTimeString();
+          logs.value.push({ time, message, type });
+          nextTick(() => {
+            if (logBox.value) {
+              logBox.value.scrollTop = logBox.value.scrollHeight;
+            }
+          });
+        };
+
+        // 更新表单数据的通用函数
+        const updateFormWithData = (data) => {
+          if (data.secrets) Object.assign(configForm.secrets, data.secrets);
+          if (data.model_settings) Object.assign(configForm.model_settings, data.model_settings);
+          if (data.transcribe_settings) {
+            Object.assign(configForm.transcribe_settings, data.transcribe_settings);
+            if (!Array.isArray(configForm.transcribe_settings.temperature)) {
+              configForm.transcribe_settings.temperature = [configForm.transcribe_settings.temperature || 0.0];
+            }
+            if (Array.isArray(configForm.transcribe_settings.suppress_tokens)) {
+              suppressTokensStr.value = configForm.transcribe_settings.suppress_tokens.join(",");
+            }
+            nullableFields.hallucination_silence_threshold = configForm.transcribe_settings.hallucination_silence_threshold ?? "";
+            nullableFields.max_new_tokens = configForm.transcribe_settings.max_new_tokens ?? "";
+            nullableFields.chunk_length = configForm.transcribe_settings.chunk_length ?? "";
+          }
+          if (data.vad_settings) Object.assign(configForm.vad_settings, data.vad_settings);
+        };
+
+        // 页面加载时获取配置
+        onMounted(async () => {
+          addLog("正在连接后端获取当前配置...", "info");
+          try {
+            const res = await fetch(`${API_BASE}/api/config`);
+            const data = await res.json();
+            updateFormWithData(data);
+            addLog("配置获取成功，系统准备就绪。", "success");
+          } catch (e) {
+            addLog("获取配置失败，请确保后端服务已启动 (python app.py)。", "error");
+            ElMessage.error("无法连接到后端服务！");
+          }
+        });
+
+        // 恢复默认配置
+        const restoreDefaultConfig = async () => {
+          try {
+            await ElMessageBox.confirm(
+              '确定要恢复所有的默认参数吗？这将会覆盖当前以及 config.json 中的所有设置。',
+              '恢复默认',
+              { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+            );
+            
+            const res = await fetch(`${API_BASE}/api/config/restore`, { method: "POST" });
+            if (!res.ok) throw new Error("恢复失败");
+            const data = await res.json();
+            
+            updateFormWithData(data);
+            addLog("✅ 已成功覆盖并恢复默认配置！", "success");
+            ElMessage.success("已恢复默认设置！");
+          } catch (e) {
+            if (e !== 'cancel') ElMessage.error(`操作失败: ${e.message}`);
+          }
+        };
+
+        // Temperature 数组的增删操作
+        const addTemperature = (index) => {
+          const tempArray = configForm.transcribe_settings.temperature;
+          let nextVal = tempArray[index] + 0.2;
+          if (nextVal > 1.0) nextVal = 1.0;
+          // 插入到当前索引之后
+          tempArray.splice(index + 1, 0, parseFloat(nextVal.toFixed(1)));
+        };
+
+        const removeTemperature = (index) => {
+          const tempArray = configForm.transcribe_settings.temperature;
+          if (tempArray.length > 1) {
+            tempArray.splice(index, 1);
+          }
+        };
+
+        // 在提交前，将中间状态转换为后端接受的正确类型
+        const preparePayload = () => {
+          const payload = JSON.parse(JSON.stringify(configForm)); // 深拷贝
+          
+          // 转换 suppress_tokens
+          payload.transcribe_settings.suppress_tokens = suppressTokensStr.value
+            .split(",")
+            .map(s => parseInt(s.trim()))
+            .filter(n => !isNaN(n));
+            
+          // 转换 Nullable 字段
+          const parseNull = (val) => (val === "" || val === null || val === undefined) ? null : Number(val);
+          payload.transcribe_settings.hallucination_silence_threshold = parseNull(nullableFields.hallucination_silence_threshold);
+          payload.transcribe_settings.max_new_tokens = parseNull(nullableFields.max_new_tokens);
+          payload.transcribe_settings.chunk_length = parseNull(nullableFields.chunk_length);
+          
+          return payload;
+        };
+
+        // 自定义上传逻辑
+        const handleUpload = async (options) => {
+          const formData = new FormData();
+          formData.append("file", options.file);
+          
+          addLog(`开始上传视频: ${options.file.name}...`, "info");
+          
+          try {
+            const res = await fetch(`${API_BASE}/api/upload`, {
+              method: "POST",
+              body: formData
+            });
+            const data = await res.json();
+            if (res.ok) {
+              taskId.value = data.task_id;
+              currentFileName.value = options.file.name;
+              activeStep.value = 1;
+              addLog(`上传成功！任务 ID: ${data.task_id}`, "success");
+              ElMessage.success("视频上传成功，请点击开始生成字幕！");
+            } else {
+              throw new Error(data.detail || "上传失败");
+            }
+          } catch (e) {
+            addLog(`上传异常: ${e.message}`, "error");
+            ElMessage.error(`上传失败: ${e.message}`);
+          }
+        };
+
+        // 启动转录
+        const startTranscribe = async () => {
+          if (!taskId.value) return;
+          isProcessing.value = true;
+          activeStep.value = 1;
+          addLog("提交转录任务到后端...", "info");
+
+          // 连接 WebSocket 监听进度
+          const ws = new WebSocket(`${WS_BASE}/ws/progress/${taskId.value}`);
+          
+          ws.onopen = () => addLog("WebSocket 已连接，等待引擎启动...", "success");
+          ws.onerror = () => { addLog("WebSocket 连接异常！", "error"); isProcessing.value = false; };
+          ws.onclose = () => { addLog("WebSocket 连接已关闭。", "info"); };
+
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.status === "processing") {
+              if (data.step === "extract_audio") activeStep.value = 2;
+              if (data.step === "transcribing") activeStep.value = 3;
+              
+              if (data.progress) {
+                addLog(`[${data.progress}] ${data.text}`, "progress");
+              } else {
+                addLog(`${data.message}`, "info");
+              }
+            } else if (data.status === "completed") {
+              activeStep.value = 4;
+              isProcessing.value = false;
+              addLog("🎉 字幕生成完毕！请点击右上角下载。", "success");
+              ElMessage.success("字幕生成完毕！");
+              ws.close();
+            } else if (data.status === "error") {
+              addLog(`❌ 发生错误: ${data.message}`, "error");
+              isProcessing.value = false;
+              ws.close();
+            }
+          };
+
+          // 发送转录请求
+          try {
+            await fetch(`${API_BASE}/api/transcribe`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ task_id: taskId.value, ...preparePayload() })
+            });
+          } catch (e) {
+            addLog(`请求启动任务失败: ${e.message}`, "error");
+            isProcessing.value = false;
+          }
+        };
+
+        // 下载字幕
+        const downloadSrt = () => {
+          if (taskId.value) {
+            window.open(`${API_BASE}/api/download/${taskId.value}`, "_blank");
+          }
+        };
+
+        return {
+          configForm, taskId, currentFileName, activeStep, isProcessing, logs, logBox,
+          suppressTokensStr, nullableFields,
+          handleUpload, startTranscribe, downloadSrt, addTemperature, removeTemperature,
+          restoreDefaultConfig
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+    
+    app.use(ElementPlus);
+    app.mount("#app");
+  </script>
+</body>
+</html>
