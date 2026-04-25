@@ -1,0 +1,47 @@
+{
+  "secrets": {
+    "hf_token": ""
+  },
+  "model_settings": {
+    "model_size": "large-v2",
+    "download_root": "models"
+  },
+  "transcribe_settings": {
+    "language": null,
+    "task": "transcribe",
+    "log_progress": false,
+    "beam_size": 5,
+    "best_of": 5,
+    "patience": 1.0,
+    "length_penalty": 1.0,
+    "repetition_penalty": 1.0,
+    "no_repeat_ngram_size": 0,
+    "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    "compression_ratio_threshold": 2.4,
+    "log_prob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+    "condition_on_previous_text": true,
+    "prompt_reset_on_temperature": 0.5,
+    "initial_prompt": null,
+    "prefix": null,
+    "suppress_blank": true,
+    "suppress_tokens": [-1],
+    "without_timestamps": false,
+    "max_initial_timestamp": 1.0,
+    "word_timestamps": false,
+    "prepend_punctuations": "\"'“¿([{-",
+    "append_punctuations": "\"'.。,，!！?？:：”)]}、",
+    "multilingual": false,
+    "max_new_tokens": null,
+    "chunk_length": null,
+    "clip_timestamps": "0",
+    "hallucination_silence_threshold": null,
+    "hotwords": null,
+    "language_detection_threshold": 0.5,
+    "language_detection_segments": 1
+  },
+  "vad_settings": {
+    "vad_filter": true,
+    "vad_parameters": null
+  }
+}
