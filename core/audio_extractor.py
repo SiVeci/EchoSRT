@@ -11,16 +11,16 @@ def extract_audio(video_path: str, output_audio_path: str) -> str:
     # 跨平台判断：优先使用本地 FFmpeg，如果没有则使用系统全局 FFmpeg
     system = platform.system()
     if system == "Windows":
-        local_ffmpeg = os.path.join(os.getcwd(), "ffmpeg", "bin", "ffmpeg.exe")
+        local_ffmpeg = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffmpeg.exe")
     else:
-        local_ffmpeg = os.path.join(os.getcwd(), "ffmpeg", "bin", "ffmpeg")
+        local_ffmpeg = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffmpeg")
         
     if os.path.exists(local_ffmpeg):
         ffmpeg_cmd = local_ffmpeg
     else:
         ffmpeg_cmd = shutil.which("ffmpeg")
         if not ffmpeg_cmd:
-            raise FileNotFoundError("未找到 FFmpeg！请确保项目路径下存在 ffmpeg 文件夹，或已在系统中安装 FFmpeg。")
+            raise FileNotFoundError("未找到 FFmpeg！请确保项目路径下存在 bin/ffmpeg 文件夹，或已在系统中安装 FFmpeg。")
 
     command = [
         ffmpeg_cmd,
