@@ -30,7 +30,7 @@ export const store = reactive({
         },
         vad_settings: { vad_filter: true },
         ffmpeg_settings: { audio_track: "0:a:0", start_time: "", end_time: "" },
-        llm_settings: { api_key: "", base_url: "https://api.siliconflow.cn/v1", model_name: "Pro/deepseek-ai/DeepSeek-V3.2", target_language: "zh", batch_size: 50, system_prompt: "" }
+        llm_settings: { api_key: "", base_url: "https://api.openai.com/v1", model_name: "Pro/deepseek-ai/DeepSeek-V3.2", target_language: "zh", batch_size: 50, system_prompt: "" }
     },
 
     // --- 字典数据 (从后端拉取的下拉框选项) ---

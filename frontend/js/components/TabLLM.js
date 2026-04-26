@@ -38,8 +38,16 @@ export default {
                             <span class="card-title">⚙️ 翻译参数 (LLM)</span>
                         </template>
                         <el-form :model="store.config.llm_settings" label-width="140px" label-position="left" size="default">
-                            <el-form-item label="API Base URL">
-                                <el-input v-model="store.config.llm_settings.base_url" placeholder="例如: https://api.siliconflow.cn/v1"></el-input>
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        API Base URL
+                                        <el-tooltip content="兼容 OpenAI 格式的 API 接口地址。官方接口请填 https://api.openai.com/v1，第三方或中转代理服务请填入对应地址。" placement="top">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-input v-model="store.config.llm_settings.base_url" placeholder="例如: https://api.openai.com/v1"></el-input>
                             </el-form-item>
 
                             <el-form-item label="API Key">

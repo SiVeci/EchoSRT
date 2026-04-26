@@ -150,7 +150,7 @@ async def get_models():
     ]
 
 @app.get("/api/llm/models")
-async def get_llm_models(api_key: str, base_url: str = "https://api.siliconflow.cn/v1"):
+async def get_llm_models(api_key: str, base_url: str = "https://api.openai.com/v1"):
     """从大模型供应商处拉取支持对话的模型列表"""
     if not api_key:
         raise HTTPException(status_code=400, detail="请先填写 API Key")

@@ -51,7 +51,7 @@
   },
   "llm_settings": {
     "api_key": "",
-    "base_url": "https://api.siliconflow.cn/v1",
+    "base_url": "https://api.openai.com/v1",
     "model_name": "Pro/deepseek-ai/DeepSeek-V3.2",
     "target_language": "zh",
     "batch_size": 50,

@@ -76,7 +76,7 @@ def run_llm_translation(
     }
     """
     api_key = llm_config.get("api_key", "").strip()
-    base_url = llm_config.get("base_url", "https://api.siliconflow.cn/v1").strip()
+    base_url = llm_config.get("base_url", "https://api.openai.com/v1").strip()
     model_name = llm_config.get("model_name", "Pro/deepseek-ai/DeepSeek-V3.2").strip()
     target_language_code = llm_config.get("target_language", "zh").strip()
     batch_size = llm_config.get("batch_size", 50)
