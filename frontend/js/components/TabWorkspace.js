@@ -1,16 +1,19 @@
-const { ref } = Vue;
+const { ref, onMounted } = Vue;
 import { store, addLog } from '../store.js';
-import { uploadAsset } from '../api.js';
+import { uploadAsset, getTasks, deleteTask } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
     template: `
         <div class="workspace-container">
-            <div style="margin-bottom: 20px; color: #606266; font-size: 14px;">
+            <el-alert title="提示" type="info" show-icon style="margin-bottom: 20px;" :closable="false">
                 请将需要处理的视频拖拽至下方区域。这将会为你初始化一个全新的工作流任务。
-            </div>
+            </el-alert>
             
-            <!-- 拖拽上传区 -->
+            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+                <template #header>
+                    <div style="font-weight: bold; color: #303133;">📁 新建任务</div>
+                </template>
             <el-upload
                 class="upload-demo"
                 drag
@@ -40,12 +43,54 @@ export default {
                 <el-icon style="vertical-align: middle; margin-right: 5px; font-size: 18px;"><CircleCheck /></el-icon>
                 源文件 <strong>{{ currentFileName }}</strong> 已就绪
             </div>
+            </el-card>
+
+            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+                <template #header>
+                    <div style="font-weight: bold; color: #303133;">🕰️ 历史任务记录</div>
+                </template>
+                <el-table :data="taskList" style="width: 100%" height="320" v-loading="isLoadingTasks" :empty-text="'暂无历史任务'">
+                    <el-table-column prop="base_name" label="任务名称 (源文件名)" min-width="180" show-overflow-tooltip></el-table-column>
+                    <el-table-column label="创建时间" width="160">
+                        <template #default="scope">
+                            {{ new Date(scope.row.created_at * 1000).toLocaleString() }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="资产状态" width="220">
+                        <template #default="scope">
+                            <el-tag size="small" :type="scope.row.has_video ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">视频</el-tag>
+                            <el-tag size="small" :type="scope.row.has_audio ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">音频</el-tag>
+                            <el-tag size="small" :type="scope.row.has_original_srt ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">原声</el-tag>
+                            <el-tag size="small" :type="scope.row.has_translated_srt ? 'success' : 'info'" effect="plain">翻译</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="160" fixed="right">
+                        <template #default="scope">
+                            <el-button size="small" type="primary" plain @click="loadTask(scope.row)" :disabled="store.taskId === scope.row.task_id">加载</el-button>
+                            <el-button size="small" type="danger" plain @click="removeTask(scope.row)">删除</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </el-card>
         </div>
     `,
     setup() {
         const isUploading = ref(false);
         const uploadPercent = ref(0);
         const currentFileName = ref("");
+        const taskList = ref([]);
+        const isLoadingTasks = ref(false);
+
+        const fetchTasks = async () => {
+            isLoadingTasks.value = true;
+            try { taskList.value = await getTasks(); } 
+            catch (e) { ElementPlus.ElMessage.error("获取历史任务失败"); }
+            finally { isLoadingTasks.value = false; }
+        };
+
+        onMounted(() => {
+            fetchTasks();
+        });
 
         const handleUpload = async (options) => {
             addLog(`开始上传源文件: ${options.file.name}...`, "info");
@@ -74,6 +119,7 @@ export default {
                 addLog(`✅ 上传成功！任务分配 ID: ${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("上传成功，任务工作区已就绪！");
                 
+                fetchTasks(); // 上传完成后刷新历史列表
             } catch (e) {
                 addLog(`❌ 上传失败: ${e.message}`, "error");
                 ElementPlus.ElMessage.error(`上传失败: ${e.message}`);
@@ -82,11 +128,49 @@ export default {
             }
         };
 
+        const loadTask = (task) => {
+            store.taskId = task.task_id;
+            store.assets = {
+                hasVideo: task.has_video,
+                hasAudio: task.has_audio,
+                hasOriginalSrt: task.has_original_srt,
+                hasTranslatedSrt: task.has_translated_srt
+            };
+            currentFileName.value = task.base_name;
+            
+            // 智能推导进度条应该亮到哪一步
+            if (task.has_translated_srt) store.activeStep = 5;
+            else if (task.has_original_srt) store.activeStep = 4;
+            else if (task.has_audio) store.activeStep = 3;
+            else if (task.has_video) store.activeStep = 2;
+            else store.activeStep = 1;
+            
+            addLog(`📂 已加载历史任务: ${task.base_name}`, "info");
+            ElementPlus.ElMessage.success("任务加载成功！");
+        };
+
+        const removeTask = async (task) => {
+            try {
+                await ElementPlus.ElMessageBox.confirm(`确定要彻底删除任务 "${task.base_name}" 及其所有产生的文件吗？此操作不可逆。`, '警告', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' });
+                await deleteTask(task.task_id);
+                if (store.taskId === task.task_id) {
+                    store.taskId = null;
+                    store.activeStep = 0;
+                }
+                ElementPlus.ElMessage.success("任务已删除");
+                fetchTasks();
+            } catch (e) { if(e !== 'cancel') ElementPlus.ElMessage.error(e.message || "删除失败"); }
+        };
+
         return {
             isUploading,
             uploadPercent,
             currentFileName,
+            taskList,
+            isLoadingTasks,
             handleUpload,
+            loadTask,
+            removeTask,
             store
         };
     }

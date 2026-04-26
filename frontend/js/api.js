@@ -62,3 +62,10 @@ export const executeTask = async (taskId, steps, config) => {
     }
     return await res.json();
 };
+
+export const getTasks = () => fetchGet('/api/tasks');
+export const deleteTask = async (taskId) => {
+    const res = await fetch(`${API_BASE}/api/task/${taskId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("删除任务失败");
+    return await res.json();
+};

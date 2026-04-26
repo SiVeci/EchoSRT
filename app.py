@@ -241,6 +241,48 @@ async def download_srt(task_id: str, type: str = "original"):
         
     return FileResponse(target_file, media_type="text/plain", filename=out_name)
 
+@app.get("/api/tasks")
+async def list_tasks():
+    """获取所有工作区历史任务列表"""
+    tasks = []
+    if not os.path.exists(WORKSPACE_DIR):
+        return tasks
+        
+    for task_id in os.listdir(WORKSPACE_DIR):
+        task_dir = os.path.join(WORKSPACE_DIR, task_id)
+        if not os.path.isdir(task_dir):
+            continue
+            
+        meta_path = os.path.join(task_dir, "meta.json")
+        base_name = task_id[:8] + "..."
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                    base_name = meta.get("base_name", base_name)
+            except Exception:
+                pass
+                
+        # 检查各阶段资产是否就绪
+        has_video = any(f.startswith("video.") for f in os.listdir(task_dir))
+        has_audio = os.path.exists(os.path.join(task_dir, "audio.wav"))
+        has_original = os.path.exists(os.path.join(task_dir, "original.srt"))
+        has_translated = os.path.exists(os.path.join(task_dir, "translated.srt"))
+        
+        created_at = os.path.getmtime(task_dir)
+        
+        tasks.append({"task_id": task_id, "base_name": base_name, "has_video": has_video, "has_audio": has_audio, "has_original_srt": has_original, "has_translated_srt": has_translated, "created_at": created_at})
+        
+    return sorted(tasks, key=lambda x: x["created_at"], reverse=True)
+
+@app.delete("/api/task/{task_id}")
+async def delete_task(task_id: str):
+    """删除指定的任务空间"""
+    task_dir = os.path.join(WORKSPACE_DIR, task_id)
+    if os.path.exists(task_dir):
+        shutil.rmtree(task_dir)
+    return {"message": "任务删除成功"}
+
 # ==========================================
 # 后台任务逻辑
 # ==========================================

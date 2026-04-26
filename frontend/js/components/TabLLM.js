@@ -10,9 +10,13 @@ export default {
                 使用大语言模型 (如 DeepSeek, Qwen, ChatGPT 等) 对提取出的原生字幕进行上下文连贯的批量翻译和润色。如果你已经有了外部的生肉字幕，也可以直接在此处上传并开始翻译。
             </el-alert>
 
-            <!-- 独立上传字幕区 -->
-            <div style="margin-bottom: 25px; padding: 15px; border: 1px dashed #dcdfe6; border-radius: 8px; background-color: #fafafa;">
-                <div style="margin-bottom: 10px; font-size: 13px; color: #606266; font-weight: bold;">[独立通道] 已有生肉字幕？</div>
+            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+                <template #header>
+                    <div style="font-weight: bold; color: #303133;">📥 独立字幕输入通道</div>
+                </template>
+                <div style="margin-bottom: 15px; font-size: 13px; color: #606266;">
+                    如果您已经拥有外部的生肉字幕文件，可在此直接上传，跳过前面的识别步骤。
+                </div>
                 <el-upload
                     action="#"
                     :auto-upload="true"
@@ -25,9 +29,12 @@ export default {
                         <el-icon style="margin-right: 5px;"><Upload /></el-icon> 直接上传外部字幕 (绕过识别)
                     </el-button>
                 </el-upload>
-            </div>
+            </el-card>
 
-            <!-- LLM 参数配置表单 -->
+            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+                <template #header>
+                    <div style="font-weight: bold; color: #303133;">⚙️ 翻译参数 (LLM)</div>
+                </template>
             <el-form :model="store.config.llm_settings" label-width="140px" label-position="left" size="default">
                 <el-form-item label="API Base URL">
                     <el-input v-model="store.config.llm_settings.base_url" placeholder="例如: https://api.siliconflow.cn/v1"></el-input>
@@ -70,9 +77,10 @@ export default {
                     ></el-input>
                 </el-form-item>
             </el-form>
+            </el-card>
 
             <!-- 操作按钮与状态指示 -->
-            <div style="margin-top: 30px; display: flex; align-items: center;">
+            <div style="margin-top: 20px; display: flex; align-items: center;">
                 <el-button 
                     type="primary" 
                     size="large" 
