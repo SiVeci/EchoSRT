@@ -36,5 +36,6 @@ pip install faster-whisper fastapi "uvicorn[standard]" python-multipart websocke
 ## TODO
 
 - [ ] **HTTP 代理支持**：配置本地代理以加速 Hugging Face 大模型的下载。
-- [ ] **在线模型聚合**：在模型选择界面直接获取并展示 Hugging Face 上的可用模型列表，支持本地缺失时自动下载。
+- [x] **在线模型聚合**：在模型选择界面直接获取并展示 Hugging Face 上的可用模型列表，支持本地缺失时自动下载。
 - [ ] **Docker 容器化部署**：提供 Docker 镜像封装，方便在 NAS 或云服务器上一键运行部署。
+- [ ] **集成翻译功能**：在WebUI集成接入LLM模型API的翻译功能，实现一站式获得中文字幕。
