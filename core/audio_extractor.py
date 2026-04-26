@@ -4,7 +4,7 @@ import platform
 import shutil
 import re
 
-def extract_audio(video_path: str, output_audio_path: str, progress_callback=None) -> str:
+def extract_audio(video_path: str, output_audio_path: str, progress_callback=None, ffmpeg_settings: dict = None) -> str:
     """使用 FFmpeg 从视频中提取 16kHz 单声道音频"""
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"视频文件不存在: {video_path}")
@@ -25,14 +25,25 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
 
     command = [
         ffmpeg_cmd,
-        "-y",                  
-        "-i", video_path,      
-        "-vn",                 
-        "-acodec", "pcm_s16le",
-        "-ar", "16000",        
-        "-ac", "1",            
-        output_audio_path
+        "-y",
+        "-i", video_path
     ]
+
+    if ffmpeg_settings:
+        if ffmpeg_settings.get("start_time"):
+            command.extend(["-ss", str(ffmpeg_settings["start_time"])])
+        if ffmpeg_settings.get("end_time"):
+            command.extend(["-to", str(ffmpeg_settings["end_time"])])
+        if ffmpeg_settings.get("audio_track"):
+            command.extend(["-map", str(ffmpeg_settings["audio_track"])])
+
+    command.extend([
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        output_audio_path
+    ])
     
     print(f"[*] 正在提取音频至临时文件: {output_audio_path}")
     

@@ -1,0 +1,29 @@
+/* 全局样式与变量定义 */
+body {
+  margin: 0;
+  background-color: #f5f7fa;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+
+/* 右侧日志控制台样式 (极客终端风) */
+.log-container {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  padding: 15px;
+  height: 350px;
+  overflow-y: auto;
+  border-radius: 4px;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+}
+.log-info { color: #569cd6; }
+.log-success { color: #608b4e; }
+.log-warning { color: #d7ba7d; }
+.log-error { color: #f44336; }
+.log-progress { color: #4ec9b0; font-weight: bold;}
+
+.console-card {
+  min-height: 700px;
+}

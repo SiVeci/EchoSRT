@@ -43,5 +43,17 @@
   "vad_settings": {
     "vad_filter": true,
     "vad_parameters": null
+  },
+  "ffmpeg_settings": {
+    "audio_track": "0:a:0",
+    "start_time": "",
+    "end_time": ""
+  },
+  "llm_settings": {
+    "api_key": "",
+    "base_url": "https://api.siliconflow.cn/v1",
+    "model_name": "Pro/deepseek-ai/DeepSeek-V3.2",
+    "batch_size": 50,
+    "system_prompt": ""
   }
 }

@@ -4,13 +4,14 @@ import uuid
 import asyncio
 import shutil
 from typing import Dict, Any
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.audio_extractor import extract_audio
 from core.whisper_engine import transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
+from core.translate import run_llm_translation
 from faster_whisper import available_models
 
 # Whisper 支持的 99 种语言映射表
@@ -146,41 +147,62 @@ async def get_models():
         {"label": "🇬🇧 纯英文模型 (English Only)", "options": en_models}
     ]
 
-@app.post("/api/upload")
-async def upload_video(file: UploadFile = File(...)):
-    """接收前端上传的视频文件"""
-    task_id = str(uuid.uuid4())
+@app.post("/api/upload/{asset_type}")
+async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: str = Form(None)):
+    """接收前端上传的媒体资产 (video, audio, srt)"""
+    if not task_id:
+        task_id = str(uuid.uuid4())
     
-    # 为每个任务创建独立的文件夹
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     os.makedirs(task_dir, exist_ok=True)
     
-    video_path = os.path.join(task_dir, file.filename)
+    # 处理 metadata 以保留原始文件名
+    meta_path = os.path.join(task_dir, "meta.json")
+    meta_data = {}
+    if os.path.exists(meta_path):
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta_data = json.load(f)
+
+    # 始终以用户最初上传的文件名作为最终产物的 Base Name
+    base_name = os.path.splitext(file.filename)[0]
+    if "base_name" not in meta_data:
+        meta_data["base_name"] = base_name
+
+    if asset_type == "video":
+        ext = os.path.splitext(file.filename)[1]
+        save_path = os.path.join(task_dir, f"video{ext}")
+    elif asset_type == "audio":
+        save_path = os.path.join(task_dir, "audio.wav")
+    elif asset_type == "srt":
+        save_path = os.path.join(task_dir, "original.srt")
+    else:
+        raise HTTPException(status_code=400, detail="不支持的资产类型")
     
-    # 保存文件到专属任务工作区
-    with open(video_path, "wb") as buffer:
+    with open(save_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    return {"task_id": task_id, "filename": file.filename, "message": "文件上传成功"}
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta_data, f, ensure_ascii=False)
+        
+    return {"task_id": task_id, "filename": file.filename, "message": f"{asset_type} 上传成功"}
 
-@app.post("/api/transcribe")
-async def start_transcribe(background_tasks: BackgroundTasks, payload: dict = Body(...)):
-    """接收参数并启动后台转录任务"""
+@app.post("/api/task/execute")
+async def execute_task(background_tasks: BackgroundTasks, payload: dict = Body(...)):
+    """接收配置并按步骤执行工作流任务"""
     task_id = payload.get("task_id")
     if not task_id:
         raise HTTPException(status_code=400, detail="缺少 task_id")
         
-    # 将前端传来的新参数保存回 config.json（剔除掉单次任务的 task_id）
-    config_to_save = {k: v for k, v in payload.items() if k != "task_id"}
+    # 将前端传来的新参数保存回 config.json
+    config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
     try:
         with open("config.json", "w", encoding="utf-8") as f:
             json.dump(config_to_save, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"[警告] 无法保存最新配置到 config.json: {e}")
 
-    # 将具体的耗时逻辑放入后台任务，当前请求立即返回
-    background_tasks.add_task(run_transcription_task, task_id, payload)
-    return {"task_id": task_id, "message": "转录任务已启动"}
+    background_tasks.add_task(run_pipeline_task, task_id, payload)
+    return {"task_id": task_id, "message": "工作流已启动"}
 
 @app.websocket("/ws/progress/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
@@ -194,21 +216,30 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
         manager.disconnect(task_id)
 
 @app.get("/api/download/{task_id}")
-async def download_srt(task_id: str):
-    """下载最终生成的 SRT 字幕文件"""
+async def download_srt(task_id: str, type: str = "original"):
+    """下载生成的字幕文件 (type=original|translated)"""
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if not os.path.exists(task_dir):
         raise HTTPException(status_code=404, detail="任务目录不存在")
         
-    # 在任务专属目录中查找 srt 文件
-    srt_files = [f for f in os.listdir(task_dir) if f.endswith(".srt")]
-    if not srt_files:
-        raise HTTPException(status_code=404, detail="字幕文件尚未生成或不存在")
+    meta_path = os.path.join(task_dir, "meta.json")
+    base_name = "output"
+    if os.path.exists(meta_path):
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+            base_name = meta.get("base_name", "output")
+            
+    if type == "translated":
+        target_file = os.path.join(task_dir, "translated.srt")
+        out_name = f"{base_name}_chs.srt"
+    else:
+        target_file = os.path.join(task_dir, "original.srt")
+        out_name = f"{base_name}.srt"
     
-    srt_filename = srt_files[0]
-    srt_path = os.path.join(task_dir, srt_filename)
-    
-    return FileResponse(srt_path, media_type="text/plain", filename=srt_filename)
+    if not os.path.exists(target_file):
+        raise HTTPException(status_code=404, detail="请求的字幕文件尚未生成或不存在")
+        
+    return FileResponse(target_file, media_type="text/plain", filename=out_name)
 
 # ==========================================
 # 后台任务逻辑
@@ -272,113 +303,99 @@ async def auto_unload_timer():
         # 倒计时被取消，说明期间有新任务进来了，无需任何操作
         pass
 
-async def run_transcription_task(task_id: str, config_payload: dict):
+async def run_pipeline_task(task_id: str, config_payload: dict):
     """
-    真实的转录调度流程，使用 run_in_executor 防止阻塞主事件循环
+    真正的模块化流水线：根据 steps 参数动态调度执行节点
     """
     global active_tasks_count, idle_timer_task
     loop = asyncio.get_running_loop()
     
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
-    temp_audio_path = os.path.join(task_dir, "temp.wav")
+    steps = config_payload.get("steps", [])
     
-    # 任务开始：增加并发计数，并随时打断（取消）清理模型的倒计时
     active_tasks_count += 1
     if idle_timer_task is not None:
         idle_timer_task.cancel()
         idle_timer_task = None
 
     try:
-        # 查找该任务目录下的视频文件
         if not os.path.exists(task_dir):
-            raise Exception("任务目录丢失。")
+            raise Exception("任务空间目录不存在。")
             
-        video_files = [f for f in os.listdir(task_dir) if not f.endswith(".wav") and not f.endswith(".srt")]
-        if not video_files:
-            raise Exception("在工作区中未找到对应的视频文件，请重新上传。")
+        # ==========================================
+        # 阶段 1: 音频提取 (FFmpeg)
+        # ==========================================
+        if "extract" in steps:
+            video_files = [f for f in os.listdir(task_dir) if f.startswith("video.")]
+            if not video_files:
+                raise Exception("缺少视频源文件，无法执行音频提取。请先上传视频。")
             
-        original_filename = video_files[0]
-        video_path = os.path.join(task_dir, original_filename)
+            video_path = os.path.join(task_dir, video_files[0])
+            audio_path = os.path.join(task_dir, "audio.wav")
+            ffmpeg_settings = config_payload.get("ffmpeg_settings", {})
+            
+            def audio_progress_callback(extracted_time):
+                msg = {"status": "processing", "step": "extract_audio", "extracted_time": extracted_time}
+                asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+                
+            await manager.send_json({"status": "processing", "step": "extract_audio", "message": "正在提取音频..."}, task_id)
+            await loop.run_in_executor(None, extract_audio, video_path, audio_path, audio_progress_callback, ffmpeg_settings)
 
-        # 生成的 srt 直接使用原视频的纯粹名称
-        base_name = os.path.splitext(original_filename)[0]
-        srt_path = os.path.join(task_dir, f"{base_name}.srt")
-
-        # 1. 提取音频阶段
-        def audio_progress_callback(extracted_time):
-            msg = {
-                "status": "processing", 
-                "step": "extract_audio", 
-                "extracted_time": extracted_time
-            }
-            asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+        # ==========================================
+        # 阶段 2: 语音识别 (Whisper)
+        # ==========================================
+        if "transcribe" in steps:
+            audio_path = os.path.join(task_dir, "audio.wav")
+            if not os.path.exists(audio_path):
+                raise Exception("缺少 audio.wav 文件，无法执行语音识别。请先执行提取音频。")
+                
+            output_srt = os.path.join(task_dir, "original.srt")
+            model_settings = config_payload.get("model_settings", {})
+            transcribe_settings = config_payload.get("transcribe_settings", {})
+            vad_settings = config_payload.get("vad_settings", {})
             
-        await manager.send_json({"status": "processing", "step": "extract_audio", "message": "正在提取音频..."}, task_id)
-        await loop.run_in_executor(None, extract_audio, video_path, temp_audio_path, audio_progress_callback)
-        
-        # 2. 加载模型与识别阶段
-        model_settings = config_payload.get("model_settings", {})
-        transcribe_settings = config_payload.get("transcribe_settings", {})
-        vad_settings = config_payload.get("vad_settings", {})
+            await manager.send_json({"status": "processing", "step": "downloading", "message": "正在读取或下载模型..."}, task_id)
+            monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
 
-        model_size = model_settings.get("model_size", "large-v2")
-        download_root = model_settings.get("download_root", "models")
-        
-        # 发送一次性的日志提示
-        await manager.send_json({"status": "processing", "step": "downloading", "message": "正在读取或下载模型... (请耐心等待)"}, task_id)
-        monitor_task = asyncio.create_task(monitor_download(task_id, download_root, model_size))
+            try:
+                segments = await loop.run_in_executor(None, transcribe_audio, audio_path, model_settings, transcribe_settings, vad_settings)
+            finally:
+                monitor_task.cancel()
+                
+            await manager.send_json({"status": "processing", "step": "transcribing", "message": "模型加载完毕，开始语音识别..."}, task_id)
 
-        try:
-            segments = await loop.run_in_executor(
-                None,
-                transcribe_audio,
-                temp_audio_path,
-                model_settings,
-                transcribe_settings,
-                vad_settings
-            )
-        finally:
-            monitor_task.cancel()  # 只要模型加载动作一结束，立刻终止监控进程
-            
-        await manager.send_json({"status": "processing", "step": "transcribing", "message": "模型加载完毕，开始语音识别..."}, task_id)
+            def progress_callback(start_time, end_time, text):
+                msg = {"status": "processing", "step": "transcribing", "progress": f"{start_time} -> {end_time}", "text": text}
+                asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+                
+            await loop.run_in_executor(None, generate_srt, segments, output_srt, progress_callback)
 
-        # 3. 进度回调函数：在子线程中被调用，用来把进度扔回主线程的 WebSocket 发送任务中
-        def progress_callback(start_time, end_time, text):
-            msg = {
-                "status": "processing",
-                "step": "transcribing",
-                "progress": f"{start_time} -> {end_time}",
-                "text": text
-            }
-            asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+        # ==========================================
+        # 阶段 3: LLM 智能翻译 (DeepSeek)
+        # ==========================================
+        if "translate" in steps:
+            input_srt = os.path.join(task_dir, "original.srt")
+            if not os.path.exists(input_srt):
+                raise Exception("缺少 original.srt 生肉字幕，无法执行翻译。请先执行识别或上传外置字幕。")
+                
+            output_translated = os.path.join(task_dir, "translated.srt")
+            llm_config = config_payload.get("llm_settings", {})
             
-        # 4. 生成 SRT 文件并推送进度
-        await loop.run_in_executor(None, generate_srt, segments, srt_path, progress_callback)
-            
-        # 5. 通知前端全部完成
-        await manager.send_json({"status": "completed", "step": "done", "message": "字幕生成完毕！"}, task_id)
+            def translate_progress_callback(msg_text):
+                msg = {"status": "processing", "step": "translating", "message": msg_text}
+                asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+                
+            await manager.send_json({"status": "processing", "step": "translating", "message": "正在请求大模型翻译..."}, task_id)
+            await loop.run_in_executor(None, run_llm_translation, input_srt, output_translated, llm_config, translate_progress_callback)
+
+        # 全局完成
+        await manager.send_json({"status": "completed", "step": "done", "message": "工作流执行完毕！"}, task_id)
         
     except Exception as e:
-        print(f"[错误] 转录任务异常: {e}")
+        print(f"[错误] 工作流任务异常: {e}")
         await manager.send_json({"status": "error", "message": str(e)}, task_id)
     finally:
-        # 清理临时提取的音频文件
-        try:
-            if os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
-        except Exception as e:
-            print(f"[警告] 清理临时音频文件失败: {e}")
-            
-        # 清理上传的原视频文件，释放大量磁盘空间
-        try:
-            video_path_local = locals().get("video_path")
-            if video_path_local and os.path.exists(video_path_local):
-                os.remove(video_path_local)
-                print(f"[*] 已清理原视频文件: {video_path_local}")
-        except Exception as e:
-            print(f"[警告] 清理视频文件失败: {e}")
-        
-        # 任务结束：减少并发计数。如果归零，说明系统闲下来了，启动倒计时
+        # 注意：取消了自动删除源文件和临时音频的逻辑。它们将驻留在任务空间中，支持分步重试。
         active_tasks_count -= 1
         if active_tasks_count <= 0:
             active_tasks_count = 0
