@@ -3,25 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoSRT WebUI</title>
+  <title>EchoSRT WebUI</title>
   
   <!-- 引入 Element Plus 的 CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus/dist/index.css" />
   <link rel="stylesheet" href="./css/style.css" />
   <style>
-    .header {
-      background-color: #409EFF;
-      color: white;
-      text-align: center;
-      line-height: 60px;
-      font-size: 24px;
-      font-weight: bold;
-      box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
-    }
     .main-container {
       max-width: 1600px;
       min-width: 1200px;
-      margin: 20px auto;
+      margin: 20px 0 20px 5%; /* 方案 B：取消 auto 绝对居中，改为左侧固定 5% 边距锚定 */
       padding: 0 20px;
     }
     .box-card {
@@ -41,13 +32,36 @@
     .el-tabs__content {
       padding: 20px 0;
     }
+    /* 全新模块化标题样式 */
+    .app-brand {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    .app-brand .logo {
+      font-size: 36px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    .app-brand h1 {
+      margin: 0;
+      font-size: 28px;
+      color: #303133;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <el-container>
-      <el-header class="header">🎬 AutoSRT 智能字幕工作台</el-header>
       <el-main class="main-container">
+        
+        <!-- 模块化标题区 -->
+        <div class="app-brand">
+          <span class="logo">🎬</span>
+          <h1>EchoSRT 智能字幕工作台</h1>
+        </div>
         
         <el-row :gutter="20">
           <!-- 左侧主工作区 (16/24 约 67%) -->

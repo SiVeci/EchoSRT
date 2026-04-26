@@ -40,7 +40,7 @@ SUPPORTED_LANGUAGES = {
     "vi": "vietnamese", "yi": "yiddish", "yo": "yoruba", "zh": "chinese"
 }
 
-app = FastAPI(title="AutoSRT Web API")
+app = FastAPI(title="EchoSRT Web API")
 
 # 配置 CORS，允许前端跨域请求
 app.add_middleware(

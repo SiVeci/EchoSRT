@@ -1,4 +1,4 @@
-# AutoSRT 🎬
+# EchoSRT 🎬
 
 基于 `faster-whisper` 与 `LLM大模型` 的现代化本地视频字幕自动化工作站。
 

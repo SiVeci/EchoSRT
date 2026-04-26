@@ -69,7 +69,7 @@ export default {
                                     <template #label>
                                         <span style="display: inline-flex; align-items: center;">
                                             Initial Prompt (初始提示词)
-                                            <el-tooltip content="提供专有名词、人名或特定语言风格，引导模型正确输出。例如：'这是一个关于 AutoSRT 的教程。'" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip>
+                                            <el-tooltip content="提供专有名词、人名或特定语言风格，引导模型正确输出。例如：'这是一个关于 EchoSRT 的教程。'" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip>
                                         </span>
                                     </template>
                                     <el-input type="textarea" v-model="store.config.transcribe_settings.initial_prompt" placeholder="引导词、专有名词、人名等 (空则不使用)"></el-input>
