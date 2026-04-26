@@ -214,6 +214,48 @@ async def download_srt(task_id: str):
 # 后台任务逻辑
 # ==========================================
 
+def get_hf_repo_id(model_size: str) -> str:
+    """推导 Hugging Face 上的完整仓库名称"""
+    if "distil" in model_size:
+        return f"Systran/faster-distil-whisper-{model_size.replace('distil-', '')}"
+    return f"Systran/faster-whisper-{model_size}"
+
+def get_folder_size(folder_path: str) -> int:
+    """计算文件夹总字节数，忽略软链接，只计算真实的 blobs"""
+    total_size = 0
+    if not os.path.exists(folder_path):
+        return 0
+    for dirpath, _, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+    return total_size
+
+async def monitor_download(task_id: str, download_root: str, model_size: str):
+    """后台监控模型下载进度的守护任务 (精简版: 仅监控当前模型的缓存文件夹)"""
+    repo_id = get_hf_repo_id(model_size)
+    repo_folder_name = f"models--{repo_id.replace('/', '--')}"
+    target_folder = os.path.join(os.getcwd(), download_root, repo_folder_name)
+    try:
+        while True:
+            current_size = await asyncio.to_thread(get_folder_size, target_folder)
+            mb_size = current_size / (1024 * 1024)
+            
+            # 只发送体积进度数据，不附带 message 字段，避免前端疯狂刷新日志行
+            msg = {
+                "status": "processing", 
+                "step": "downloading", 
+                "downloaded_mb": round(mb_size, 1)
+            }
+            
+            await manager.send_json(msg, task_id)
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        print(f"[监控线程异常] {e}")
+
 # 任务并发计数与空闲计时器
 active_tasks_count = 0
 idle_timer_task = None
@@ -263,24 +305,42 @@ async def run_transcription_task(task_id: str, config_payload: dict):
         srt_path = os.path.join(task_dir, f"{base_name}.srt")
 
         # 1. 提取音频阶段
+        def audio_progress_callback(extracted_time):
+            msg = {
+                "status": "processing", 
+                "step": "extract_audio", 
+                "extracted_time": extracted_time
+            }
+            asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+            
         await manager.send_json({"status": "processing", "step": "extract_audio", "message": "正在提取音频..."}, task_id)
-        await loop.run_in_executor(None, extract_audio, video_path, temp_audio_path)
+        await loop.run_in_executor(None, extract_audio, video_path, temp_audio_path, audio_progress_callback)
         
         # 2. 加载模型与识别阶段
-        await manager.send_json({"status": "processing", "step": "transcribing", "message": "正在加载或下载引擎模型 (首次耗时较长，请耐心等待)..."}, task_id)
-        
         model_settings = config_payload.get("model_settings", {})
         transcribe_settings = config_payload.get("transcribe_settings", {})
         vad_settings = config_payload.get("vad_settings", {})
 
-        segments = await loop.run_in_executor(
-            None,
-            transcribe_audio,
-            temp_audio_path,
-            model_settings,
-            transcribe_settings,
-            vad_settings
-        )
+        model_size = model_settings.get("model_size", "large-v2")
+        download_root = model_settings.get("download_root", "models")
+        
+        # 发送一次性的日志提示
+        await manager.send_json({"status": "processing", "step": "downloading", "message": "正在读取或下载模型... (请耐心等待)"}, task_id)
+        monitor_task = asyncio.create_task(monitor_download(task_id, download_root, model_size))
+
+        try:
+            segments = await loop.run_in_executor(
+                None,
+                transcribe_audio,
+                temp_audio_path,
+                model_settings,
+                transcribe_settings,
+                vad_settings
+            )
+        finally:
+            monitor_task.cancel()  # 只要模型加载动作一结束，立刻终止监控进程
+            
+        await manager.send_json({"status": "processing", "step": "transcribing", "message": "模型加载完毕，开始语音识别..."}, task_id)
 
         # 3. 进度回调函数：在子线程中被调用，用来把进度扔回主线程的 WebSocket 发送任务中
         def progress_callback(start_time, end_time, text):

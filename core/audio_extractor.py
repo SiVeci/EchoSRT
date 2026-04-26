@@ -2,8 +2,9 @@ import subprocess
 import os
 import platform
 import shutil
+import re
 
-def extract_audio(video_path: str, output_audio_path: str) -> str:
+def extract_audio(video_path: str, output_audio_path: str, progress_callback=None) -> str:
     """使用 FFmpeg 从视频中提取 16kHz 单声道音频"""
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"视频文件不存在: {video_path}")
@@ -34,9 +35,23 @@ def extract_audio(video_path: str, output_audio_path: str) -> str:
     ]
     
     print(f"[*] 正在提取音频至临时文件: {output_audio_path}")
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     
-    if result.returncode != 0:
-        raise RuntimeError(f"FFmpeg 提取音频失败:\n{result.stderr}")
+    # 使用 Popen 进行流式读取
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, universal_newlines=True)
+    
+    # 预编译正则，用于匹配 FFmpeg 日志中的 time=HH:MM:SS.xx
+    time_pattern = re.compile(r"time=(\d{2}:\d{2}:\d{2})\.\d+")
+    
+    # 逐行读取 stderr (FFmpeg 的日志默认输出在 stderr)
+    for line in process.stderr:
+        match = time_pattern.search(line)
+        if match and progress_callback:
+            # 提取出 HH:MM:SS 并回调
+            progress_callback(match.group(1))
+            
+    process.wait()
+    
+    if process.returncode != 0:
+        raise RuntimeError(f"FFmpeg 提取音频失败，返回码 {process.returncode}")
     
     return output_audio_path
