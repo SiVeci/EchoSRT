@@ -8,9 +8,9 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks, WebSocket, WebSo
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from audio_extractor import extract_audio
-from whisper_engine import transcribe_audio, unload_model
-from srt_formatter import generate_srt
+from core.audio_extractor import extract_audio
+from core.whisper_engine import transcribe_audio, unload_model
+from core.srt_formatter import generate_srt
 
 app = FastAPI(title="AutoSRT Web API")
 

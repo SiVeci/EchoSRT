@@ -2,9 +2,9 @@ import os
 import json
 import platform
 import shutil
-from audio_extractor import extract_audio
-from whisper_engine import transcribe_audio
-from srt_formatter import generate_srt
+from core.audio_extractor import extract_audio
+from core.whisper_engine import transcribe_audio
+from core.srt_formatter import generate_srt
 
 def main():
     print("=== 本地 GPU 视频自动提取字幕工具 ===")
