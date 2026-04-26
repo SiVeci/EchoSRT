@@ -12,9 +12,9 @@ export default {
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div style="font-weight: bold; color: #303133;">📥 独立字幕输入通道</div>
+                    <div class="card-title">📥 独立字幕输入通道</div>
                 </template>
-                <div style="margin-bottom: 15px; font-size: 13px; color: #606266;">
+                <div class="section-desc">
                     如果您已经拥有外部的生肉字幕文件，可在此直接上传，跳过前面的识别步骤。
                 </div>
                 <el-upload
@@ -32,68 +32,72 @@ export default {
             </el-card>
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
-                <template #header>
-                    <div style="font-weight: bold; color: #303133;">⚙️ 翻译参数 (LLM)</div>
-                </template>
-            <el-form :model="store.config.llm_settings" label-width="140px" label-position="left" size="default">
-                <el-form-item label="API Base URL">
-                    <el-input v-model="store.config.llm_settings.base_url" placeholder="例如: https://api.siliconflow.cn/v1"></el-input>
-                </el-form-item>
+                <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
+                    <el-collapse-item name="1">
+                        <template #title>
+                            <span class="card-title">⚙️ 翻译参数 (LLM)</span>
+                        </template>
+                        <el-form :model="store.config.llm_settings" label-width="140px" label-position="left" size="default">
+                            <el-form-item label="API Base URL">
+                                <el-input v-model="store.config.llm_settings.base_url" placeholder="例如: https://api.siliconflow.cn/v1"></el-input>
+                            </el-form-item>
 
-                <el-form-item label="API Key">
-                    <el-input v-model="store.config.llm_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
-                </el-form-item>
+                            <el-form-item label="API Key">
+                                <el-input v-model="store.config.llm_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
+                            </el-form-item>
 
-                <el-form-item label="Model Name">
-                    <div style="display: flex; gap: 10px; width: 100%;">
-                        <el-select v-model="store.config.llm_settings.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
-                            <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
-                        </el-select>
-                        <el-button type="primary" plain @click="refreshModels" :loading="isFetchingModels" title="从 API 供应商拉取可用模型">
-                            <el-icon><Refresh /></el-icon>
-                        </el-button>
-                    </div>
-                </el-form-item>
+                            <el-form-item label="Model Name">
+                                <div style="display: flex; gap: 10px; width: 100%;">
+                                    <el-select v-model="store.config.llm_settings.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
+                                        <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
+                                    </el-select>
+                                    <el-button type="primary" plain @click="refreshModels" :loading="isFetchingModels" title="从 API 供应商拉取可用模型">
+                                        <el-icon><Refresh /></el-icon>
+                                    </el-button>
+                                </div>
+                            </el-form-item>
 
-                <el-form-item label="目标语言">
-                    <el-select v-model="store.config.llm_settings.target_language" placeholder="选择翻译目标语言" filterable style="width: 100%;">
-                        <el-option v-for="lang in targetLanguages" :key="lang.code" :label="lang.name + ' (' + lang.code + ')'" :value="lang.code"></el-option>
-                    </el-select>
-                </el-form-item>
+                            <el-form-item label="目标语言">
+                                <el-select v-model="store.config.llm_settings.target_language" placeholder="选择翻译目标语言" filterable style="width: 100%;">
+                                    <el-option v-for="lang in targetLanguages" :key="lang.code" :label="lang.name + ' (' + lang.code + ')'" :value="lang.code"></el-option>
+                                </el-select>
+                            </el-form-item>
 
-                <el-form-item>
-                    <template #label>
-                        <span style="display: inline-flex; align-items: center;">
-                            翻译批次大小
-                            <el-tooltip content="每次发给大模型的字幕行数。太小会导致缺乏上下文，太大可能超出模型单次输出上限或导致漏翻。" placement="top">
-                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
-                            </el-tooltip>
-                        </span>
-                    </template>
-                    <el-slider v-model="store.config.llm_settings.batch_size" :min="10" :max="200" :step="10" show-input></el-slider>
-                </el-form-item>
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        翻译批次大小
+                                        <el-tooltip content="每次发给大模型的字幕行数。太小会导致缺乏上下文，太大可能超出模型单次输出上限或导致漏翻。" placement="top">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-slider v-model="store.config.llm_settings.batch_size" :min="10" :max="200" :step="10" show-input></el-slider>
+                            </el-form-item>
 
-                <el-form-item>
-                    <template #label>
-                        <span style="display: inline-flex; align-items: center;">
-                            System Prompt
-                            <el-tooltip content="控制大模型翻译风格的系统提示词。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top">
-                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
-                            </el-tooltip>
-                        </span>
-                    </template>
-                    <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
-                        <div style="background-color: #f5f7fa; padding: 10px 15px; border-radius: 4px; border: 1px solid #e4e7ed; color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ fixedPrompt }}</div>
-                        <el-input type="textarea" v-model="store.config.llm_settings.system_prompt" :rows="5"
-                            placeholder="[在此输入附加的自定义风格和格式要求，例如：请输出双语字幕，第一行中文...]&#10;留空则使用内置的【高质量通用影视翻译】格式要求。"
-                        ></el-input>
-                    </div>
-                </el-form-item>
-            </el-form>
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        System Prompt
+                                        <el-tooltip content="控制大模型的翻译风格指令。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="background-color: #f5f7fa; padding: 10px 15px; border-radius: 4px; border: 1px solid #e4e7ed; color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ fixedPrompt }}</div>
+                                    <el-input type="textarea" v-model="store.config.llm_settings.system_prompt" :rows="5"
+                                        placeholder="[在此输入附加的自定义风格和格式要求，例如：请输出双语字幕，第一行中文...]&#10;留空则使用内置的【高质量通用影视翻译】格式要求。"
+                                    ></el-input>
+                                </div>
+                            </el-form-item>
+                        </el-form>
+                    </el-collapse-item>
+                </el-collapse>
             </el-card>
 
             <!-- 操作按钮与状态指示 -->
-            <div style="margin-top: 20px; display: flex; align-items: center;">
+            <div class="action-bar">
                 <el-button 
                     type="primary" 
                     size="large" 
@@ -104,10 +108,10 @@ export default {
                     <el-icon style="margin-right: 5px;"><ChatDotSquare /></el-icon> 开始执行智能翻译
                 </el-button>
                 
-                <span v-if="!store.assets.hasOriginalSrt" style="color: #F56C6C; margin-left: 15px; font-size: 13px;">
+                <span v-if="!store.assets.hasOriginalSrt" class="status-text-error">
                     ⚠️ 请先在前方提供原声字幕
                 </span>
-                <span v-else-if="store.assets.hasTranslatedSrt" style="color: #67C23A; margin-left: 15px; font-size: 13px;">
+                <span v-else-if="store.assets.hasTranslatedSrt" class="status-text-success">
                     ✅ 翻译字幕已生成，请在右侧下载
                 </span>
             </div>
@@ -116,6 +120,7 @@ export default {
     setup() {
         const isUploading = ref(false);
         const isFetchingModels = ref(false);
+        const activeCollapse = ref([]); // 默认折叠状态
 
         // 从后端拉取的常用语言字典中，过滤出几个翻译中常用的语言作为目标语言候选
         const targetLanguages = computed(() => {
@@ -213,6 +218,6 @@ export default {
             }
         };
 
-        return { store, isUploading, isFetchingModels, targetLanguages, fixedPrompt, refreshModels, handleSrtUpload, runTranslate };
+        return { store, isUploading, isFetchingModels, activeCollapse, targetLanguages, fixedPrompt, refreshModels, handleSrtUpload, runTranslate };
     }
 };

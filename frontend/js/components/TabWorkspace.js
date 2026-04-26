@@ -12,10 +12,10 @@ export default {
             
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div style="font-weight: bold; color: #303133;">📁 新建任务</div>
+                    <div class="card-title">📁 新建任务</div>
                 </template>
             <el-upload
-                class="upload-demo"
+                class="compact-upload"
                 drag
                 action="#"
                 :auto-upload="true"
@@ -24,9 +24,9 @@ export default {
                 accept="video/*,audio/*"
                 :disabled="isUploading"
             >
-                <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-                <div class="el-upload__text">
-                    将音/视频文件拖到此处，或 <em>点击上传</em>
+                <div class="el-upload__text" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <el-icon style="font-size: 24px; color: #409EFF;"><upload-filled /></el-icon>
+                    <span style="font-size: 15px;">将音/视频文件拖到此处，或 <em>点击上传</em></span>
                 </div>
             </el-upload>
             
@@ -46,10 +46,12 @@ export default {
             </el-card>
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
-                <template #header>
-                    <div style="font-weight: bold; color: #303133;">🕰️ 历史任务记录</div>
-                </template>
-                <el-table :data="taskList" style="width: 100%" height="320" v-loading="isLoadingTasks" :empty-text="'暂无历史任务'">
+                <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
+                    <el-collapse-item name="1">
+                        <template #title>
+                            <span class="card-title">🕰️ 历史任务记录</span>
+                        </template>
+                <el-table :data="taskList" style="width: 100%" height="280" v-loading="isLoadingTasks" :empty-text="'暂无历史任务'">
                     <el-table-column prop="base_name" label="任务名称 (源文件名)" min-width="180" show-overflow-tooltip></el-table-column>
                     <el-table-column label="创建时间" width="160">
                         <template #default="scope">
@@ -71,6 +73,8 @@ export default {
                         </template>
                     </el-table-column>
                 </el-table>
+                    </el-collapse-item>
+                </el-collapse>
             </el-card>
         </div>
     `,
@@ -80,6 +84,7 @@ export default {
         const currentFileName = ref("");
         const taskList = ref([]);
         const isLoadingTasks = ref(false);
+        const activeCollapse = ref([]); // 默认折叠状态
 
         const fetchTasks = async () => {
             isLoadingTasks.value = true;
@@ -168,6 +173,7 @@ export default {
             currentFileName,
             taskList,
             isLoadingTasks,
+            activeCollapse,
             handleUpload,
             loadTask,
             removeTask,

@@ -13,7 +13,7 @@ export default {
             <!-- 基础设置卡片 -->
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div style="font-weight: bold; color: #303133;">⚙️ 基础设置 (Basic)</div>
+                    <div class="card-title">⚙️ 基础设置 (Basic)</div>
                 </template>
                 <el-form :model="store.config" label-width="140px" size="default" label-position="left">
                     <el-form-item>
@@ -58,7 +58,7 @@ export default {
                 <el-collapse style="border-top: none; border-bottom: none;">
                 <el-collapse-item name="1">
                     <template #title>
-                        <span style="font-weight: bold; color: #606266; font-size: 14px;"><el-icon style="margin-right: 5px;"><Tools /></el-icon> 高级设置 (Advanced Settings)</span>
+                        <span class="card-title"><el-icon style="margin-right: 5px;"><Tools /></el-icon> 高级设置 (Advanced Settings)</span>
                     </template>
                     
                     <el-tabs type="border-card" size="small" stretch>
@@ -171,7 +171,7 @@ export default {
             </el-card>
 
             <!-- 操作按钮与状态指示 -->
-            <div style="margin-top: 20px; display: flex; align-items: center;">
+            <div class="action-bar">
                 <el-button 
                     type="primary" 
                     size="large" 
@@ -182,10 +182,10 @@ export default {
                     <el-icon style="margin-right: 5px;"><Microphone /></el-icon> 开始执行原声识别
                 </el-button>
                 
-                <span v-if="!store.assets.hasAudio" style="color: #F56C6C; margin-left: 15px; font-size: 13px;">
+                <span v-if="!store.assets.hasAudio" class="status-text-error">
                     ⚠️ 请先在前方提供音频
                 </span>
-                <span v-else-if="store.assets.hasOriginalSrt" style="color: #67C23A; margin-left: 15px; font-size: 13px;">
+                <span v-else-if="store.assets.hasOriginalSrt" class="status-text-success">
                     ✅ 原声字幕已生成，可前往翻译
                 </span>
             </div>

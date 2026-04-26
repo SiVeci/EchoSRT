@@ -12,9 +12,9 @@ export default {
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div style="font-weight: bold; color: #303133;">📥 独立音频输入通道</div>
+                    <div class="card-title">📥 独立音频输入通道</div>
                 </template>
-                <div style="margin-bottom: 15px; font-size: 13px; color: #606266;">
+                <div class="section-desc">
                     如果您已经拥有独立的音频文件，可在此直接上传，跳过视频提取步骤。
                 </div>
                 <el-upload
@@ -33,50 +33,54 @@ export default {
 
             <!-- FFmpeg 参数配置表单 -->
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
-                <template #header>
-                    <div style="font-weight: bold; color: #303133;">⚙️ 提取参数 (FFmpeg)</div>
-                </template>
-                <el-form :model="store.config.ffmpeg_settings" label-width="140px" label-position="left" size="default">
-                    <el-form-item>
-                        <template #label>
-                            <span style="display: inline-flex; align-items: center;">
-                                音轨选择 (Map)
-                                <el-tooltip content="默认 0:a:0 代表第一条音轨。对于多音轨视频（如中英双语版），可修改为 0:a:1 提取第二条。" placement="top">
-                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
-                                </el-tooltip>
-                            </span>
+                <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
+                    <el-collapse-item name="1">
+                        <template #title>
+                            <span class="card-title">⚙️ 提取参数 (FFmpeg)</span>
                         </template>
-                        <el-input v-model="store.config.ffmpeg_settings.audio_track" placeholder="例如: 0:a:0"></el-input>
-                    </el-form-item>
+                        <el-form :model="store.config.ffmpeg_settings" label-width="140px" label-position="left" size="default">
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        音轨选择 (Map)
+                                        <el-tooltip content="默认 0:a:0 代表第一条音轨。对于多音轨视频（如中英双语版），可修改为 0:a:1 提取第二条。" placement="top">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-input v-model="store.config.ffmpeg_settings.audio_track" placeholder="例如: 0:a:0"></el-input>
+                            </el-form-item>
 
-                    <el-form-item>
-                        <template #label>
-                            <span style="display: inline-flex; align-items: center;">
-                                开始时间 (-ss)
-                                <el-tooltip content="留空表示从头开始。格式支持纯秒数 (120) 或标准时间戳 (00:02:00)。" placement="top">
-                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
-                                </el-tooltip>
-                            </span>
-                        </template>
-                        <el-input v-model="store.config.ffmpeg_settings.start_time" placeholder="例如: 00:01:00 (空则从头开始)"></el-input>
-                    </el-form-item>
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        开始时间 (-ss)
+                                        <el-tooltip content="留空表示从头开始。格式支持纯秒数 (120) 或标准时间戳 (00:02:00)。" placement="top">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-input v-model="store.config.ffmpeg_settings.start_time" placeholder="例如: 00:01:00 (空则从头开始)"></el-input>
+                            </el-form-item>
 
-                    <el-form-item>
-                        <template #label>
-                            <span style="display: inline-flex; align-items: center;">
-                                结束时间 (-to)
-                                <el-tooltip content="留空表示提取到视频末尾。格式同上。" placement="top">
-                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
-                                </el-tooltip>
-                            </span>
-                        </template>
-                        <el-input v-model="store.config.ffmpeg_settings.end_time" placeholder="例如: 00:05:00 (空则直到末尾)"></el-input>
-                    </el-form-item>
-                </el-form>
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        结束时间 (-to)
+                                        <el-tooltip content="留空表示提取到视频末尾。格式同上。" placement="top">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-input v-model="store.config.ffmpeg_settings.end_time" placeholder="例如: 00:05:00 (空则直到末尾)"></el-input>
+                            </el-form-item>
+                        </el-form>
+                    </el-collapse-item>
+                </el-collapse>
             </el-card>
 
             <!-- 操作按钮与状态指示 -->
-            <div style="margin-top: 20px; display: flex; align-items: center;">
+            <div class="action-bar">
                 <el-button 
                     type="primary" 
                     size="large" 
@@ -87,10 +91,10 @@ export default {
                     <el-icon style="margin-right: 5px;"><VideoPlay /></el-icon> 仅执行音频提取
                 </el-button>
                 
-                <span v-if="!store.assets.hasVideo" style="color: #F56C6C; margin-left: 15px; font-size: 13px;">
+                <span v-if="!store.assets.hasVideo" class="status-text-error">
                     ⚠️ 请先在工作区上传视频
                 </span>
-                <span v-else-if="store.assets.hasAudio" style="color: #67C23A; margin-left: 15px; font-size: 13px;">
+                <span v-else-if="store.assets.hasAudio" class="status-text-success">
                     ✅ 音频已就绪，可直接前往下一步
                 </span>
             </div>
@@ -105,6 +109,7 @@ export default {
     setup() {
         const isUploading = ref(false);
         const extractedTime = ref("");
+        const activeCollapse = ref([]); // 默认折叠状态
 
         // 处理独立上传音频
         const handleAudioUpload = async (options) => {
@@ -164,6 +169,6 @@ export default {
             }
         };
 
-        return { store, isUploading, extractedTime, handleAudioUpload, runExtract };
+        return { store, isUploading, extractedTime, activeCollapse, handleAudioUpload, runExtract };
     }
 };

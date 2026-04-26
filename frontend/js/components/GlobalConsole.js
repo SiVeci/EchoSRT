@@ -5,19 +5,19 @@ import { API_BASE } from '../api.js';
 export default {
     name: 'GlobalConsole',
     template: `
-        <el-card class="box-card console-card" shadow="never">
+        <el-card class="box-card" shadow="never">
             <template #header>
                 <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: bold;">⏱️ 任务监视器</span>
+                    <span class="card-title">⏱️ 任务监视器</span>
                 </div>
             </template>
 
             <!-- 产物下载区 (只有资产就绪时才可点击) -->
             <div class="download-actions" style="margin-bottom: 25px; display: flex; flex-direction: column; gap: 12px;">
-                <el-button type="primary" plain @click="downloadSrt('original')" :disabled="!store.assets.hasOriginalSrt">
+                <el-button type="primary" plain @click="downloadSrt('original')" :disabled="!store.assets.hasOriginalSrt" style="width: 100%; margin-left: 0;">
                     <el-icon style="margin-right: 5px;"><Download /></el-icon> 下载原声字幕 (SRT)
                 </el-button>
-                <el-button type="success" plain @click="downloadSrt('translated')" :disabled="!store.assets.hasTranslatedSrt">
+                <el-button type="success" plain @click="downloadSrt('translated')" :disabled="!store.assets.hasTranslatedSrt" style="width: 100%; margin-left: 0;">
                     <el-icon style="margin-right: 5px;"><Download /></el-icon> 下载翻译字幕 (SRT)
                 </el-button>
             </div>
@@ -31,16 +31,24 @@ export default {
                 <el-step title="LLM 翻译" description="大模型翻译中"></el-step>
             </el-steps>
 
-            <!-- 日志终端 -->
-            <div class="log-container" ref="logBox">
-                <div v-for="(log, index) in store.logs" :key="index" :class="'log-' + log.type">
-                    <span style="color:#808080;">[{{ log.time }}]</span> {{ log.message }}
-                </div>
-            </div>
+            <!-- 日志终端 (可折叠) -->
+            <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
+                <el-collapse-item name="1">
+                    <template #title>
+                        <span class="card-title" style="font-size: 14px;">📝 运行日志</span>
+                    </template>
+                    <div class="log-container" ref="logBox">
+                        <div v-for="(log, index) in store.logs" :key="index" :class="'log-' + log.type">
+                            <span style="color:#808080;">[{{ log.time }}]</span> {{ log.message }}
+                        </div>
+                    </div>
+                </el-collapse-item>
+            </el-collapse>
         </el-card>
     `,
     setup() {
         const logBox = ref(null);
+        const activeCollapse = ref([]); // 默认折叠，需要看时可展开
 
         // 监听日志数组的长度变化，自动将滚动条拉到最底部
         watch(() => store.logs.length, () => {
@@ -56,6 +64,6 @@ export default {
             window.open(`${API_BASE}/api/download/${store.taskId}?type=${type}`, "_blank");
         };
 
-        return { store, logBox, downloadSrt };
+        return { store, logBox, activeCollapse, downloadSrt };
     }
 };
