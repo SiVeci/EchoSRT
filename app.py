@@ -12,6 +12,30 @@ from core.audio_extractor import extract_audio
 from core.whisper_engine import transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
 
+# Whisper 支持的 99 种语言映射表
+SUPPORTED_LANGUAGES = {
+    "af": "afrikaans", "am": "amharic", "ar": "arabic", "as": "assamese", "az": "azerbaijani", 
+    "ba": "bashkir", "be": "belarusian", "bg": "bulgarian", "bn": "bengali", "bo": "tibetan", 
+    "br": "breton", "bs": "bosnian", "ca": "catalan", "cs": "czech", "cy": "welsh", 
+    "da": "danish", "de": "german", "el": "greek", "en": "english", "es": "spanish", 
+    "et": "estonian", "eu": "basque", "fa": "persian", "fi": "finnish", "fo": "faroese", 
+    "fr": "french", "gl": "galician", "gu": "gujarati", "ha": "hausa", "haw": "hawaiian", 
+    "he": "hebrew", "hi": "hindi", "hr": "croatian", "ht": "haitian creole", "hu": "hungarian", 
+    "hy": "armenian", "id": "indonesian", "is": "icelandic", "it": "italian", "ja": "japanese", 
+    "jw": "javanese", "ka": "georgian", "kk": "kazakh", "km": "khmer", "kn": "kannada", 
+    "ko": "korean", "la": "latin", "lb": "luxembourgish", "ln": "lingala", "lo": "lao", 
+    "lt": "lithuanian", "lv": "latvian", "mg": "malagasy", "mi": "maori", "mk": "macedonian", 
+    "ml": "malayalam", "mn": "mongolian", "mr": "marathi", "ms": "malay", "mt": "maltese", 
+    "my": "myanmar", "ne": "nepali", "nl": "dutch", "nn": "nynorsk", "no": "norwegian", 
+    "oc": "occitan", "pa": "punjabi", "pl": "polish", "ps": "pashto", "pt": "portuguese", 
+    "ro": "romanian", "ru": "russian", "sa": "sanskrit", "sd": "sindhi", "si": "sinhala", 
+    "sk": "slovak", "sl": "slovenian", "sn": "shona", "so": "somali", "sq": "albanian", 
+    "sr": "serbian", "su": "sundanese", "sv": "swedish", "sw": "swahili", "ta": "tamil", 
+    "te": "telugu", "tg": "tajik", "th": "thai", "tk": "turkmen", "tl": "tagalog", 
+    "tr": "turkish", "tt": "tatar", "uk": "ukrainian", "ur": "urdu", "uz": "uzbek", 
+    "vi": "vietnamese", "yi": "yiddish", "yo": "yoruba", "zh": "chinese"
+}
+
 app = FastAPI(title="AutoSRT Web API")
 
 # 配置 CORS，允许前端跨域请求
@@ -91,6 +115,12 @@ async def restore_config():
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取恢复后的配置失败: {str(e)}")
+
+@app.get("/api/languages")
+async def get_languages():
+    """获取 Whisper 支持的所有语言列表"""
+    langs = [{"code": k, "name": v.capitalize()} for k, v in SUPPORTED_LANGUAGES.items()]
+    return sorted(langs, key=lambda x: x["name"])
 
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):

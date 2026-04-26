@@ -97,11 +97,14 @@
                       </el-tooltip>
                     </span>
                   </template>
-                  <el-select v-model="configForm.transcribe_settings.language" placeholder="自动检测" clearable>
+                  <el-select v-model="configForm.transcribe_settings.language" placeholder="自动检测" clearable filterable>
                     <el-option label="自动检测" :value="null"></el-option>
-                    <el-option label="中文 (zh)" value="zh"></el-option>
-                    <el-option label="英文 (en)" value="en"></el-option>
-                    <el-option label="日语 (ja)" value="ja"></el-option>
+                  <el-option-group label="🌟 常用语言">
+                    <el-option v-for="lang in pinnedLanguages" :key="lang.code" :label="`${lang.name} (${lang.code})`" :value="lang.code"></el-option>
+                  </el-option-group>
+                  <el-option-group label="🌐 其他语言 (A-Z)">
+                    <el-option v-for="lang in otherLanguages" :key="lang.code" :label="`${lang.name} (${lang.code})`" :value="lang.code"></el-option>
+                  </el-option-group>
                   </el-select>
                 </el-form-item>
               </el-form>
@@ -455,6 +458,8 @@
           max_new_tokens: "",
           chunk_length: ""
         });
+        const pinnedLanguages = ref([]);
+        const otherLanguages = ref([]);
 
         const taskId = ref(null);
         const currentFileName = ref("");
@@ -500,6 +505,26 @@
             const res = await fetch(`${API_BASE}/api/config`);
             const data = await res.json();
             updateFormWithData(data);
+            
+            // 获取支持的语言列表
+            const langRes = await fetch(`${API_BASE}/api/languages`);
+            const allLangs = await langRes.json();
+            
+            // 1. 定义需要置顶的常用语言及排序
+            const pinnedCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
+            const tempPinned = [];
+            
+            pinnedCodes.forEach(code => {
+              const langObj = allLangs.find(item => item.code === code);
+              if (langObj) {
+                tempPinned.push(langObj);
+              }
+            });
+            pinnedLanguages.value = tempPinned;
+            
+            // 2. 将剩下的语言过滤出来放到其他组 (后端已默认按 A-Z 排序)
+            otherLanguages.value = allLangs.filter(item => !pinnedCodes.includes(item.code));
+            
             addLog("配置获取成功，系统准备就绪。", "success");
           } catch (e) {
             addLog("获取配置失败，请确保后端服务已启动 (python app.py)。", "error");
@@ -652,7 +677,7 @@
 
         return {
           configForm, taskId, currentFileName, activeStep, isProcessing, logs, logBox,
-          suppressTokensStr, nullableFields,
+          suppressTokensStr, nullableFields, pinnedLanguages, otherLanguages,
           handleUpload, startTranscribe, downloadSrt, addTemperature, removeTemperature,
           restoreDefaultConfig
         };
