@@ -1,6 +1,6 @@
-const { ref } = Vue;
+const { ref, computed } = Vue;
 import { store, addLog } from '../store.js';
-import { executeTask, WS_BASE, uploadAsset } from '../api.js';
+import { executeTask, WS_BASE, uploadAsset, getLlmModels } from '../api.js';
 
 export default {
     name: 'TabLLM',
@@ -45,7 +45,20 @@ export default {
                 </el-form-item>
 
                 <el-form-item label="Model Name">
-                    <el-input v-model="store.config.llm_settings.model_name" placeholder="例如: Pro/deepseek-ai/DeepSeek-V3.2"></el-input>
+                    <div style="display: flex; gap: 10px; width: 100%;">
+                        <el-select v-model="store.config.llm_settings.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
+                            <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
+                        </el-select>
+                        <el-button type="primary" plain @click="refreshModels" :loading="isFetchingModels" title="从 API 供应商拉取可用模型">
+                            <el-icon><Refresh /></el-icon>
+                        </el-button>
+                    </div>
+                </el-form-item>
+
+                <el-form-item label="目标语言">
+                    <el-select v-model="store.config.llm_settings.target_language" placeholder="选择翻译目标语言" filterable style="width: 100%;">
+                        <el-option v-for="lang in targetLanguages" :key="lang.code" :label="lang.name + ' (' + lang.code + ')'" :value="lang.code"></el-option>
+                    </el-select>
                 </el-form-item>
 
                 <el-form-item>
@@ -64,17 +77,17 @@ export default {
                     <template #label>
                         <span style="display: inline-flex; align-items: center;">
                             System Prompt
-                            <el-tooltip content="控制大模型翻译风格的系统提示词。如果留空，将使用内置的高质量通用影视翻译提示词。" placement="top">
+                            <el-tooltip content="控制大模型翻译风格的系统提示词。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top">
                                 <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
                             </el-tooltip>
                         </span>
                     </template>
-                    <el-input 
-                        type="textarea" 
-                        v-model="store.config.llm_settings.system_prompt" 
-                        :rows="6"
-                        placeholder="你是一位精通各国文化的专业影视字幕翻译... (留空则使用内置默认提示词。你可以在此填入之前的限制级翻译指令或要求输出双语)"
-                    ></el-input>
+                    <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="background-color: #f5f7fa; padding: 10px 15px; border-radius: 4px; border: 1px solid #e4e7ed; color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ fixedPrompt }}</div>
+                        <el-input type="textarea" v-model="store.config.llm_settings.system_prompt" :rows="5"
+                            placeholder="[在此输入附加的自定义风格和格式要求，例如：请输出双语字幕，第一行中文...]&#10;留空则使用内置的【高质量通用影视翻译】格式要求。"
+                        ></el-input>
+                    </div>
                 </el-form-item>
             </el-form>
             </el-card>
@@ -102,6 +115,36 @@ export default {
     `,
     setup() {
         const isUploading = ref(false);
+        const isFetchingModels = ref(false);
+
+        // 从后端拉取的常用语言字典中，过滤出几个翻译中常用的语言作为目标语言候选
+        const targetLanguages = computed(() => {
+            const pinnedCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
+            return store.dicts.languages.filter(l => pinnedCodes.includes(l.code));
+        });
+
+        const fixedPrompt = computed(() => {
+            const lang = targetLanguages.value.find(l => l.code === store.config.llm_settings.target_language);
+            const langName = lang ? lang.name : '中文';
+            return `你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【${langName}】。`;
+        });
+
+        const refreshModels = async () => {
+            if (!store.config.llm_settings.api_key) {
+                ElementPlus.ElMessage.warning("请先填写 API Key！");
+                return;
+            }
+            isFetchingModels.value = true;
+            try {
+                const models = await getLlmModels(store.config.llm_settings.api_key, store.config.llm_settings.base_url);
+                store.dicts.llm_models = models;
+                ElementPlus.ElMessage.success(`成功拉取 ${models.length} 个可用对话模型！`);
+            } catch (e) {
+                ElementPlus.ElMessage.error(e.message);
+            } finally {
+                isFetchingModels.value = false;
+            }
+        };
 
         const handleSrtUpload = async (options) => {
             addLog(`开始上传外部生肉字幕: ${options.file.name}...`, "info");
@@ -170,6 +213,6 @@ export default {
             }
         };
 
-        return { store, isUploading, handleSrtUpload, runTranslate };
+        return { store, isUploading, isFetchingModels, targetLanguages, fixedPrompt, refreshModels, handleSrtUpload, runTranslate };
     }
 };

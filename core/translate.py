@@ -2,16 +2,13 @@ import os
 import time
 from openai import OpenAI
 
-DEFAULT_SYSTEM_PROMPT = """你是一位精通各国文化的专业影视字幕翻译。
-任务：将用户提供的 SRT 字幕片段翻译成中文。
-
-### 🚫 格式死命令：
+DEFAULT_SYSTEM_PROMPT = """### 🚫 格式死命令：
 1. **保留原文结构**：这是字幕片段，不要合并，不要遗漏。
 2. **保留时间轴**：所有时间戳（如 00:00:01,000 --> ...）必须原样保留，不得修改。
 3. **只输出结果**：不要加“好的”、“片段翻译如下”等废话，直接输出 SRT 格式文本。
 
 ### 🎯 风格要求：
-1. **自然流畅**：符合中文母语者的表达习惯。
+1. **自然流畅**：符合目标语言母语者的表达习惯。
 2. **专业严谨**：准确翻译专有名词和术语。
 3. **结合语境**：根据前后文调整语气和用词。"""
 
@@ -81,11 +78,23 @@ def run_llm_translation(
     api_key = llm_config.get("api_key", "").strip()
     base_url = llm_config.get("base_url", "https://api.siliconflow.cn/v1").strip()
     model_name = llm_config.get("model_name", "Pro/deepseek-ai/DeepSeek-V3.2").strip()
+    target_language_code = llm_config.get("target_language", "zh").strip()
     batch_size = llm_config.get("batch_size", 50)
-    system_prompt = llm_config.get("system_prompt", "").strip()
     
-    if not system_prompt:
-        system_prompt = DEFAULT_SYSTEM_PROMPT
+    # 构建固定不可更改的前半段语言指令
+    lang_map = {
+        "zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", 
+        "fr": "法文", "de": "德文", "es": "西班牙文", "ru": "俄文"
+    }
+    lang_name = lang_map.get(target_language_code, target_language_code)
+    fixed_prompt = f"你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【{lang_name}】。\n\n"
+
+    # 提取并组合后半段的风格指令
+    custom_prompt = llm_config.get("system_prompt", "").strip()
+    if not custom_prompt:
+        custom_prompt = DEFAULT_SYSTEM_PROMPT
+        
+    full_system_prompt = fixed_prompt + custom_prompt
 
     if not api_key:
         raise ValueError("缺少大模型 API Key，请先在设置中配置。")
@@ -127,7 +136,7 @@ def run_llm_translation(
         translated_chunk = translate_batch(
             client=client, 
             model_name=model_name, 
-            system_prompt=system_prompt, 
+            system_prompt=full_system_prompt, 
             batch_content=batch, 
             batch_index=current_batch_num, 
             total_batches=total_batches,

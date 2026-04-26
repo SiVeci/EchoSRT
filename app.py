@@ -3,6 +3,8 @@ import json
 import uuid
 import asyncio
 import shutil
+import urllib.request
+import urllib.error
 from typing import Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.responses import FileResponse
@@ -146,6 +148,33 @@ async def get_models():
         {"label": "⚡ 蒸馏加速模型 (Distilled)", "options": distil_models},
         {"label": "🇬🇧 纯英文模型 (English Only)", "options": en_models}
     ]
+
+@app.get("/api/llm/models")
+async def get_llm_models(api_key: str, base_url: str = "https://api.siliconflow.cn/v1"):
+    """从大模型供应商处拉取支持对话的模型列表"""
+    if not api_key:
+        raise HTTPException(status_code=400, detail="请先填写 API Key")
+    
+    base_url = base_url.strip().rstrip("/")
+    url = f"{base_url}/models"
+    
+    if "siliconflow" in base_url:
+        url += "?type=text&sub_type=chat"
+        
+    req = urllib.request.Request(url)
+    req.add_header("accept", "application/json")
+    req.add_header("authorization", f"Bearer {api_key}")
+    
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            models = data.get("data", [])
+            return [m["id"] for m in models if "id" in m]
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode('utf-8')
+        raise HTTPException(status_code=e.code, detail=f"获取失败: {err_msg}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"拉取模型列表异常: {str(e)}")
 
 @app.post("/api/upload/{asset_type}")
 async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: str = Form(None)):

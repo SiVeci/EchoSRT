@@ -79,9 +79,14 @@
                   {{ store.taskId ? store.taskId.split('-')[0] + '...' : '未创建或未选择' }}
                 </el-tag>
               </div>
-              <el-button type="primary" size="large" @click="runFullPipeline">
-                🚀 启动全量工作流 (一键处理)
-              </el-button>
+              <div style="display: flex; gap: 15px;">
+                <el-button type="success" size="large" @click="runPipeline(false)" plain>
+                  🎯 执行提取工作流 (仅原声字幕)
+                </el-button>
+                <el-button type="primary" size="large" @click="runPipeline(true)">
+                  🚀 执行全量工作流 (含智能翻译)
+                </el-button>
+              </div>
             </div>
 
           </el-col>

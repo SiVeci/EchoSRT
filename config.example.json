@@ -53,6 +53,7 @@
     "api_key": "",
     "base_url": "https://api.siliconflow.cn/v1",
     "model_name": "Pro/deepseek-ai/DeepSeek-V3.2",
+    "target_language": "zh",
     "batch_size": 50,
     "system_prompt": ""
   }

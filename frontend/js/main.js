@@ -52,8 +52,8 @@ const app = createApp({
             }
         });
 
-        // 一键启动全量工作流
-        const runFullPipeline = async () => {
+        // 智能启动工作流
+        const runPipeline = async (includeTranslation = true) => {
             if (!store.taskId) {
                 ElementPlus.ElMessage.warning("请先在【任务工作区】上传视频或指定一个任务！");
                 return;
@@ -65,8 +65,15 @@ const app = createApp({
             if (!store.assets.hasAudio && store.assets.hasVideo) steps.push("extract");
             // 2. 如果没有原生字幕，且具备音频条件，则执行识别
             if (!store.assets.hasOriginalSrt && (store.assets.hasAudio || steps.includes("extract"))) steps.push("transcribe");
-            // 3. 如果填写了大模型 API Key，则附带智能翻译功能
-            if (store.config.llm_settings.api_key) steps.push("translate");
+            
+            // 3. 如果是全量工作流，检查并加入翻译步骤
+            if (includeTranslation) {
+                if (!store.config.llm_settings.api_key) {
+                    ElementPlus.ElMessage.warning("请前往【LLM 翻译】页填写 API Key！留空无法执行全量工作流。");
+                    return;
+                }
+                steps.push("translate");
+            }
 
             if (steps.length === 0) {
                 ElementPlus.ElMessage.info("当前没有可执行的任务步骤，请检查文件状态或配置！");
@@ -74,7 +81,7 @@ const app = createApp({
             }
 
             store.isProcessing = true;
-            addLog(`🚀 启动全量工作流，执行链路: [ ${steps.join(" ➡️ ")} ]`, "success");
+            addLog(`🚀 启动工作流，执行链路: [ ${steps.join(" ➡️ ")} ]`, "success");
 
             const ws = new WebSocket(`${WS_BASE}/ws/progress/${store.taskId}`);
             ws.onopen = () => addLog("已连接到全局监视器，等待引擎响应...", "info");
@@ -103,9 +110,16 @@ const app = createApp({
                     if (steps.includes("transcribe")) store.assets.hasOriginalSrt = true;
                     if (steps.includes("translate")) store.assets.hasTranslatedSrt = true;
                     
-                    store.activeStep = 5; // 进度条圆满
-                    addLog("🎉 全量工作流完美收官！", "success");
-                    ElementPlus.ElMessage.success("🎉 全流程顺利完成！请在右侧控制台下载产物。");
+                    // 动态更新完成后的进度条指示
+                    if (includeTranslation || store.assets.hasTranslatedSrt) {
+                        store.activeStep = 5; // 全量进度条圆满
+                        addLog("🎉 全量工作流完美收官！", "success");
+                    } else {
+                        store.activeStep = 4; // 停留在翻译待命状态
+                        addLog("🎉 提取工作流执行完毕！原声字幕已生成。", "success");
+                    }
+                    
+                    ElementPlus.ElMessage.success("🎉 流程顺利完成！请在右侧控制台下载产物。");
                     ws.close();
                 } else if (data.status === "error") {
                     store.isProcessing = false;
@@ -127,7 +141,7 @@ const app = createApp({
         return {
             activeTab,
             store,
-            runFullPipeline
+            runPipeline
         };
     }
 });
