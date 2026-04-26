@@ -13,6 +13,11 @@
   - *Windows*：可直接将 `ffmpeg.exe` 放入项目的 `ffmpeg/bin/` 目录下。
   - *Mac/Linux*：请通过包管理器全局安装（如 `brew install ffmpeg` 或 `sudo apt install ffmpeg`）。
 
+- **NVIDIA GPU 加速环境 (可选但强烈推荐)**
+  - 需要安装相应的 **NVIDIA 显卡驱动**。
+  - 需配置 **CUDA Toolkit** (推荐 11.x 或 12.x) 及对应的 **cuDNN** 库，以便底层 `CTranslate2` 引擎能正常调用 GPU 算力。
+  - *注：程序会自动探测系统环境。若未检测到 Nvidia 显卡或 CUDA 环境不完整，将平滑回退至纯 CPU 模式运行（Mac 设备也会自动使用 CPU），但处理速度会显著下降。*
+
 ## 使用方法
 
 1. **安装运行依赖**
