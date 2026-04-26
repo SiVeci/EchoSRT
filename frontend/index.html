@@ -79,13 +79,10 @@
                       </el-tooltip>
                     </span>
                   </template>
-                  <el-select v-model="configForm.model_settings.model_size" placeholder="选择模型">
-                    <el-option label="Tiny (最快)" value="tiny"></el-option>
-                    <el-option label="Base" value="base"></el-option>
-                    <el-option label="Small" value="small"></el-option>
-                    <el-option label="Medium (推荐)" value="medium"></el-option>
-                    <el-option label="Large-v2 (高精度)" value="large-v2"></el-option>
-                    <el-option label="Large-v3 (最高精度)" value="large-v3"></el-option>
+                <el-select v-model="configForm.model_settings.model_size" placeholder="选择模型" filterable>
+                  <el-option-group v-for="group in modelGroups" :key="group.label" :label="group.label">
+                    <el-option v-for="model in group.options" :key="model" :label="model" :value="model"></el-option>
+                  </el-option-group>
                   </el-select>
                 </el-form-item>
                 <el-form-item>
@@ -460,6 +457,7 @@
         });
         const pinnedLanguages = ref([]);
         const otherLanguages = ref([]);
+        const modelGroups = ref([]);
 
         const taskId = ref(null);
         const currentFileName = ref("");
@@ -524,6 +522,10 @@
             
             // 2. 将剩下的语言过滤出来放到其他组 (后端已默认按 A-Z 排序)
             otherLanguages.value = allLangs.filter(item => !pinnedCodes.includes(item.code));
+            
+            // 获取可用的大模型列表
+            const modelRes = await fetch(`${API_BASE}/api/models`);
+            modelGroups.value = await modelRes.json();
             
             addLog("配置获取成功，系统准备就绪。", "success");
           } catch (e) {
@@ -677,7 +679,7 @@
 
         return {
           configForm, taskId, currentFileName, activeStep, isProcessing, logs, logBox,
-          suppressTokensStr, nullableFields, pinnedLanguages, otherLanguages,
+          suppressTokensStr, nullableFields, pinnedLanguages, otherLanguages, modelGroups,
           handleUpload, startTranscribe, downloadSrt, addTemperature, removeTemperature,
           restoreDefaultConfig
         };

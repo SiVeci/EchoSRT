@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.audio_extractor import extract_audio
 from core.whisper_engine import transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
+from faster_whisper import available_models
 
 # Whisper 支持的 99 种语言映射表
 SUPPORTED_LANGUAGES = {
@@ -121,6 +122,29 @@ async def get_languages():
     """获取 Whisper 支持的所有语言列表"""
     langs = [{"code": k, "name": v.capitalize()} for k, v in SUPPORTED_LANGUAGES.items()]
     return sorted(langs, key=lambda x: x["name"])
+
+@app.get("/api/models")
+async def get_models():
+    """动态获取 faster-whisper 支持的所有模型列表并分组"""
+    models = available_models()
+    
+    standard_models = []
+    en_models = []
+    distil_models = []
+    
+    for m in models:
+        if "distil" in m:
+            distil_models.append(m)
+        elif m.endswith(".en"):
+            en_models.append(m)
+        else:
+            standard_models.append(m)
+            
+    return [
+        {"label": "✨ 常规多语言模型 (Standard)", "options": standard_models},
+        {"label": "⚡ 蒸馏加速模型 (Distilled)", "options": distil_models},
+        {"label": "🇬🇧 纯英文模型 (English Only)", "options": en_models}
+    ]
 
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
@@ -243,7 +267,7 @@ async def run_transcription_task(task_id: str, config_payload: dict):
         await loop.run_in_executor(None, extract_audio, video_path, temp_audio_path)
         
         # 2. 加载模型与识别阶段
-        await manager.send_json({"status": "processing", "step": "transcribing", "message": "开始语音识别..."}, task_id)
+        await manager.send_json({"status": "processing", "step": "transcribing", "message": "正在加载或下载引擎模型 (首次耗时较长，请耐心等待)..."}, task_id)
         
         model_settings = config_payload.get("model_settings", {})
         transcribe_settings = config_payload.get("transcribe_settings", {})
