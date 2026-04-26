@@ -28,7 +28,7 @@
       border-radius: 8px;
     }
     .global-action-bar {
-      margin-top: 20px;
+      margin-bottom: 20px;
       background: white;
       padding: 15px 20px;
       border-radius: 8px;
@@ -53,25 +53,7 @@
           <!-- 左侧主工作区 (16/24 约 67%) -->
           <el-col :span="16">
             
-            <!-- 核心卡片及 Tab 切页 -->
-            <el-card class="box-card" shadow="never">
-              <el-tabs v-model="activeTab" class="main-tabs">
-                <el-tab-pane label="📁 任务工作区" name="workspace">
-                  <tab-workspace></tab-workspace>
-                </el-tab-pane>
-                <el-tab-pane label="🎵 提取音频" name="audio">
-                  <tab-audio></tab-audio>
-                </el-tab-pane>
-                <el-tab-pane label="🗣️ 原声识别" name="whisper">
-                  <tab-whisper></tab-whisper>
-                </el-tab-pane>
-                <el-tab-pane label="🌐 LLM 翻译" name="llm">
-                  <tab-llm></tab-llm>
-                </el-tab-pane>
-              </el-tabs>
-            </el-card>
-
-            <!-- 底部全局操作条 (Global Action Bar) -->
+            <!-- 全局操作条 (Global Action Bar) -->
             <div class="global-action-bar">
               <div style="color: #606266; font-size: 14px;">
                 当前处理任务: 
@@ -88,6 +70,24 @@
                 </el-button>
               </div>
             </div>
+
+            <!-- 核心卡片及 Tab 切页 -->
+            <el-card class="box-card" shadow="never">
+              <el-tabs v-model="activeTab" class="main-tabs" stretch>
+                <el-tab-pane label="📁 任务工作区" name="workspace">
+                  <tab-workspace></tab-workspace>
+                </el-tab-pane>
+                <el-tab-pane label="🎵 提取音频" name="audio">
+                  <tab-audio></tab-audio>
+                </el-tab-pane>
+                <el-tab-pane label="🗣️ 原声识别" name="whisper">
+                  <tab-whisper></tab-whisper>
+                </el-tab-pane>
+                <el-tab-pane label="🌐 LLM 翻译" name="llm">
+                  <tab-llm></tab-llm>
+                </el-tab-pane>
+              </el-tabs>
+            </el-card>
 
           </el-col>
 

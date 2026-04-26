@@ -42,8 +42,8 @@ export default {
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
                                         API Base URL
-                                        <el-tooltip content="兼容 OpenAI 格式的 API 接口地址。官方接口请填 https://api.openai.com/v1，第三方或中转代理服务请填入对应地址。" placement="top">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        <el-tooltip content="兼容 OpenAI 格式的 API 接口地址。官方接口请填 https://api.openai.com/v1，第三方或中转代理服务请填入对应地址。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                         </el-tooltip>
                                     </span>
                                 </template>
@@ -75,8 +75,8 @@ export default {
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
                                         翻译批次大小
-                                        <el-tooltip content="每次发给大模型的字幕行数。太小会导致缺乏上下文，太大可能超出模型单次输出上限或导致漏翻。" placement="top">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        <el-tooltip content="每次发给大模型的字幕行数。太小会导致缺乏上下文，太大可能超出模型单次输出上限或导致漏翻。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                         </el-tooltip>
                                     </span>
                                 </template>
@@ -87,8 +87,8 @@ export default {
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
                                         System Prompt
-                                        <el-tooltip content="控制大模型的翻译风格指令。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        <el-tooltip content="控制大模型的翻译风格指令。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                         </el-tooltip>
                                     </span>
                                 </template>

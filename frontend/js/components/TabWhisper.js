@@ -20,8 +20,8 @@ export default {
                         <template #label>
                             <span style="display: inline-flex; align-items: center;">
                                 模型大小
-                                <el-tooltip content="模型体积越大，识别准确率越高，但需要的显存和处理时间也成倍增加。" placement="top">
-                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                <el-tooltip content="模型体积越大，识别准确率越高，但需要的显存和处理时间也成倍增加。" placement="top" trigger="click">
+                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                 </el-tooltip>
                             </span>
                         </template>
@@ -36,8 +36,8 @@ export default {
                         <template #label>
                             <span style="display: inline-flex; align-items: center;">
                                 识别语言
-                                <el-tooltip content="指定原视频语言。自动检测可能在无声前奏中误判，明确指定可提升准确率和速度。" placement="top">
-                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                <el-tooltip content="指定原视频语言。自动检测可能在无声前奏中误判，明确指定可提升准确率和速度。" placement="top" trigger="click">
+                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                 </el-tooltip>
                             </span>
                         </template>
@@ -69,7 +69,7 @@ export default {
                                     <template #label>
                                         <span style="display: inline-flex; align-items: center;">
                                             Initial Prompt (初始提示词)
-                                            <el-tooltip content="提供专有名词、人名或特定语言风格，引导模型正确输出。例如：'这是一个关于 AutoSRT 的教程。'" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip>
+                                            <el-tooltip content="提供专有名词、人名或特定语言风格，引导模型正确输出。例如：'这是一个关于 AutoSRT 的教程。'" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip>
                                         </span>
                                     </template>
                                     <el-input type="textarea" v-model="store.config.transcribe_settings.initial_prompt" placeholder="引导词、专有名词、人名等 (空则不使用)"></el-input>
@@ -78,7 +78,7 @@ export default {
                                     <template #label>
                                         <span style="display: inline-flex; align-items: center;">
                                             Hotwords (热词增强)
-                                            <el-tooltip content="提供热词，模型会在遇到模糊发音时优先匹配这些词汇（部分底层引擎可能不支持）。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip>
+                                            <el-tooltip content="提供热词，模型会在遇到模糊发音时优先匹配这些词汇（部分底层引擎可能不支持）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip>
                                         </span>
                                     </template>
                                     <el-input type="textarea" v-model="store.config.transcribe_settings.hotwords" placeholder="希望模型优先识别的词语"></el-input>
@@ -86,18 +86,18 @@ export default {
                                 <el-row :gutter="20">
                                     <el-col :span="12">
                                         <el-checkbox v-model="store.config.transcribe_settings.condition_on_previous_text">
-                                            <span style="display: inline-flex; align-items: center;">参考上一句 (减少幻觉)<el-tooltip content="让模型结合上一句的内容来识别当前句。若视频背景噪音大，关闭此项有时能减少胡言乱语（幻觉）。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                            <span style="display: inline-flex; align-items: center;">参考上一句 (减少幻觉)<el-tooltip content="让模型结合上一句的内容来识别当前句。若视频背景噪音大，关闭此项有时能减少胡言乱语（幻觉）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                         </el-checkbox>
                                     </el-col>
                                     <el-col :span="12">
                                         <el-checkbox v-model="store.config.transcribe_settings.suppress_blank">
-                                            <span style="display: inline-flex; align-items: center;">抑制空白输出<el-tooltip content="如果模型预测结果为纯空白，强制其重试生成文字。建议保持开启。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                            <span style="display: inline-flex; align-items: center;">抑制空白输出<el-tooltip content="如果模型预测结果为纯空白，强制其重试生成文字。建议保持开启。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                         </el-checkbox>
                                     </el-col>
                                 </el-row>
                                 <el-form-item style="margin-top: 15px;">
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">抑制词 ID 数组 (Suppress Tokens)<el-tooltip content="强制禁止模型输出特定的 Token 内部 ID。-1 通常代表抑制某些非发音标记。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">抑制词 ID 数组 (Suppress Tokens)<el-tooltip content="强制禁止模型输出特定的 Token 内部 ID。-1 通常代表抑制某些非发音标记。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input v-model="suppressTokensStr" placeholder="例如: -1"></el-input>
                                 </el-form-item>
@@ -109,32 +109,32 @@ export default {
                             <el-form :model="store.config" size="small" label-position="right" label-width="120px">
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">Beam Size<el-tooltip content="束搜索候选数量。值越大（如5-10）结果越准但越慢；设为1（贪婪解码）速度最快但可能出错。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">Beam Size<el-tooltip content="束搜索候选数量。值越大（如5-10）结果越准但越慢；设为1（贪婪解码）速度最快但可能出错。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.beam_size" :min="1" :max="20"></el-input-number>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">Best Of<el-tooltip content="当非贪婪解码时，保留的最佳候选结果数。一般与 Beam Size 保持一致。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">Best Of<el-tooltip content="当非贪婪解码时，保留的最佳候选结果数。一般与 Beam Size 保持一致。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.best_of" :min="1" :max="20"></el-input-number>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">Patience<el-tooltip content="束搜索耐心因子。默认 1.0。调大可探索更多可能路径，改善结果，但增加耗时。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">Patience<el-tooltip content="束搜索耐心因子。默认 1.0。调大可探索更多可能路径，改善结果，但增加耗时。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.patience" :step="0.1" :min="0"></el-input-number>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">长度/重复惩罚<el-tooltip content="左侧: 控制输出句子的长短倾向（<1短句，>1长句）。右侧: 惩罚重复词汇，防止陷入死循环复读（>1生效）。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">长度/重复惩罚<el-tooltip content="左侧: 控制输出句子的长短倾向（<1短句，>1长句）。右侧: 惩罚重复词汇，防止陷入死循环复读（>1生效）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.length_penalty" :step="0.1" style="width: 100px; margin-right: 10px;"></el-input-number>
                                     <el-input-number v-model="store.config.transcribe_settings.repetition_penalty" :step="0.1" :min="1.0" style="width: 100px;"></el-input-number>
                                 </el-form-item>
                                 
                                 <el-divider border-style="dashed">
-                                    <span style="display: inline-flex; align-items: center;">Temperature 递进数组<el-tooltip content="当识别质量不达标时，模型会按此数组依次提升温度值，增加随机性并重试解码。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                    <span style="display: inline-flex; align-items: center;">Temperature 递进数组<el-tooltip content="当识别质量不达标时，模型会按此数组依次提升温度值，增加随机性并重试解码。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                 </el-divider>
                                 <div v-for="(temp, index) in store.config.transcribe_settings.temperature" :key="index" style="display: flex; align-items: center; margin-bottom: 8px;">
                                     <el-tag type="info" style="margin-right: 10px; width: 40px; text-align: center;"># {{ index + 1 }}</el-tag>
@@ -150,37 +150,37 @@ export default {
                             <el-form :model="store.config" size="small" label-position="right" label-width="180px">
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">VAD 智能静音过滤<el-tooltip content="在识别前剔除无声或纯噪音片段。强烈推荐开启，大幅提升速度并减少环境噪音导致的幻觉！" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">VAD 智能静音过滤<el-tooltip content="在识别前剔除无声或纯噪音片段。强烈推荐开启，大幅提升速度并减少环境噪音导致的幻觉！" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-switch v-model="store.config.vad_settings.vad_filter" active-text="强烈推荐开启"></el-switch>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">压缩比阈值<el-tooltip content="当某段文本的压缩比高于此值时，模型会认为自己在重复废话，并触发温度回退重试。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">压缩比阈值<el-tooltip content="当某段文本的压缩比高于此值时，模型会认为自己在重复废话，并触发温度回退重试。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.compression_ratio_threshold" :step="0.1"></el-input-number>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">对数概率阈值<el-tooltip content="如果识别结果的平均置信度（Log Prob）低于此值，将触发温度回退重试。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">对数概率阈值<el-tooltip content="如果识别结果的平均置信度（Log Prob）低于此值，将触发温度回退重试。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.log_prob_threshold" :step="0.1"></el-input-number>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">无声判定阈值<el-tooltip content="如果某段音频被判定为完全静音的概率高于此值，将直接跳过不输出文字。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">无声判定阈值<el-tooltip content="如果某段音频被判定为完全静音的概率高于此值，将直接跳过不输出文字。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input-number v-model="store.config.transcribe_settings.no_speech_threshold" :step="0.05" :min="0" :max="1"></el-input-number>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">幻觉静音截断阈值<el-tooltip content="遇到长达此设置（秒）的静音时，强行截断当前句子，防止模型产生幻觉。空则默认禁用。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">幻觉静音截断阈值<el-tooltip content="遇到长达此设置（秒）的静音时，强行截断当前句子，防止模型产生幻觉。空则默认禁用。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input v-model="nullableFields.hallucination_silence_threshold" placeholder="空则禁用 (Null)"></el-input>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">语言探测阈值<el-tooltip content="在多语言模式下，如果检测到新语言的置信度低于此值，将强制退回前一个语言的设定。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">语言探测阈值<el-tooltip content="在多语言模式下，如果检测到新语言的置信度低于此值，将强制退回前一个语言的设定。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-slider v-model="store.config.transcribe_settings.language_detection_threshold" :min="0" :max="1" :step="0.1" show-input></el-slider>
                                 </el-form-item>
@@ -192,49 +192,49 @@ export default {
                             <el-form :model="store.config" size="small" label-position="right" label-width="140px">
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">翻译为纯英文<el-tooltip content="无视原视频语言，强制 Whisper 模型直接听译并输出纯英文字幕（单向操作）。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">翻译为纯英文<el-tooltip content="无视原视频语言，强制 Whisper 模型直接听译并输出纯英文字幕（单向操作）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-switch v-model="store.config.transcribe_settings.task" active-value="translate" inactive-value="transcribe"></el-switch>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">多语言交替模式<el-tooltip content="允许在同一个音频中自动识别出交替出现的多种不同语言（需要配合常规多语言模型使用）。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">多语言交替模式<el-tooltip content="允许在同一个音频中自动识别出交替出现的多种不同语言（需要配合常规多语言模型使用）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-switch v-model="store.config.transcribe_settings.multilingual"></el-switch>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">词级时间戳 (Word)<el-tooltip content="精确到每一个单词的发音时间戳，而不是按长句子划分时间。会略微拖慢速度。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">词级时间戳 (Word)<el-tooltip content="精确到每一个单词的发音时间戳，而不是按长句子划分时间。会略微拖慢速度。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-switch v-model="store.config.transcribe_settings.word_timestamps"></el-switch>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">关闭时间戳<el-tooltip content="强制模型不计算和输出时间戳。警告：开启后可能导致生成 SRT 字幕文件失败！" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">关闭时间戳<el-tooltip content="强制模型不计算和输出时间戳。警告：开启后可能导致生成 SRT 字幕文件失败！" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-switch v-model="store.config.transcribe_settings.without_timestamps" active-color="#f56c6c"></el-switch>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">最大新 Token 数<el-tooltip content="限制每次切片最多生成的文字标记数量。留空表示无限制。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">最大新 Token 数<el-tooltip content="限制每次切片最多生成的文字标记数量。留空表示无限制。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input v-model="nullableFields.max_new_tokens" placeholder="空则无限制 (Null)"></el-input>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">音频切片长度 (秒)<el-tooltip content="强制将音频切分成固定的秒数送入模型。留空则由模型自动判断切分。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">音频切片长度 (秒)<el-tooltip content="强制将音频切分成固定的秒数送入模型。留空则由模型自动判断切分。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input v-model="nullableFields.chunk_length" placeholder="空则自动 (Null)"></el-input>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">模型下载存放目录<el-tooltip content="指定模型文件在本地硬盘的存放路径文件夹。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">模型下载存放目录<el-tooltip content="指定模型文件在本地硬盘的存放路径文件夹。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input v-model="store.config.model_settings.download_root"></el-input>
                                 </el-form-item>
                                 <el-form-item>
                                     <template #label>
-                                        <span style="display: inline-flex; align-items: center;">HF Token (选填)<el-tooltip content="Hugging Face 访问令牌。用于自动下载某些受权限保护的模型资产。" placement="top"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon></el-tooltip></span>
+                                        <span style="display: inline-flex; align-items: center;">HF Token (选填)<el-tooltip content="Hugging Face 访问令牌。用于自动下载某些受权限保护的模型资产。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
                                     </template>
                                     <el-input v-model="store.config.secrets.hf_token" type="password" show-password></el-input>
                                 </el-form-item>

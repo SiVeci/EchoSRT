@@ -43,8 +43,8 @@ export default {
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
                                         音轨选择 (Map)
-                                        <el-tooltip content="默认 0:a:0 代表第一条音轨。对于多音轨视频（如中英双语版），可修改为 0:a:1 提取第二条。" placement="top">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        <el-tooltip content="默认 0:a:0 代表第一条音轨。对于多音轨视频（如中英双语版），可修改为 0:a:1 提取第二条。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                         </el-tooltip>
                                     </span>
                                 </template>
@@ -55,8 +55,8 @@ export default {
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
                                         开始时间 (-ss)
-                                        <el-tooltip content="留空表示从头开始。格式支持纯秒数 (120) 或标准时间戳 (00:02:00)。" placement="top">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        <el-tooltip content="留空表示从头开始。格式支持纯秒数 (120) 或标准时间戳 (00:02:00)。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                         </el-tooltip>
                                     </span>
                                 </template>
@@ -67,8 +67,8 @@ export default {
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
                                         结束时间 (-to)
-                                        <el-tooltip content="留空表示提取到视频末尾。格式同上。" placement="top">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;"><QuestionFilled /></el-icon>
+                                        <el-tooltip content="留空表示提取到视频末尾。格式同上。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
                                         </el-tooltip>
                                     </span>
                                 </template>
