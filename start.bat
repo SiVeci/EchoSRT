@@ -8,7 +8,7 @@ echo ==========================================
 echo.
 
 echo [*] 正在启动后端 API 服务 (端口 8000)...
-start "EchoSRT 后端 (FastAPI)" cmd /k "call venv\Scripts\activate.bat && python app.py"
+start "EchoSRT 后端 (FastAPI)" cmd /k "python app.py"
 
 echo [*] 正在启动前端 Web 服务 (端口 8080)...
 start "EchoSRT 前端 (WebUI)" cmd /k "cd frontend && python -m http.server 8080"

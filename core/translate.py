@@ -56,7 +56,7 @@ def translate_batch(client, model_name, system_prompt, batch_content, batch_inde
             progress_callback(error_msg)
         else:
             print(f"   {error_msg}")
-        return None
+        raise Exception(f"大模型接口请求失败: {e}")
 
 def run_llm_translation(
     input_srt_path: str, 
@@ -102,7 +102,15 @@ def run_llm_translation(
     if not os.path.exists(input_srt_path):
         raise FileNotFoundError(f"找不到输入的字幕文件: {input_srt_path}")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    if not base_url:
+        base_url = "https://api.openai.com/v1"
+
+    client = OpenAI(
+        api_key=api_key, 
+        base_url=base_url,
+        timeout=120.0,
+        max_retries=2
+    )
 
     if progress_callback:
         progress_callback("📖 正在读取并解析原生字幕...")
@@ -147,12 +155,6 @@ def run_llm_translation(
             with open(output_srt_path, "a", encoding="utf-8") as f:
                 f.write(translated_chunk + "\n\n")
             success_count += len(batch)
-        else:
-            warn_msg = f"⚠️ 跳过第 {current_batch_num} 批次，建议稍后手动检查。"
-            if progress_callback:
-                progress_callback(warn_msg)
-            else:
-                print(warn_msg)
         
         time.sleep(1)
 

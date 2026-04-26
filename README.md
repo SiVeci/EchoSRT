@@ -24,8 +24,9 @@
 ## 使用方法
 
 1. **安装运行依赖**
+建议通过项目根目录下的 `requirements.txt` 一键安装所有必备依赖（包含视频提取、语音识别以及 LLM 翻译所需的核心库）：
 ```bash
-pip install faster-whisper fastapi "uvicorn[standard]" python-multipart websockets
+pip install -r requirements.txt
 ```
 
 2. **一键启动 WebUI**

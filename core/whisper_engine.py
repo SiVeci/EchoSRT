@@ -1,6 +1,10 @@
 import os
 import shutil
 import gc
+
+# 解决 Windows 下 OpenMP 库重复加载导致的崩溃问题 (OMP: Error #15)
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 from faster_whisper import WhisperModel
 
 # 全局缓存模型实例，避免多次加载和释放时引发底层 CTranslate2/ONNX 的跨线程死锁
