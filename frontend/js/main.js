@@ -40,6 +40,7 @@ const app = createApp({
                 if(configData.vad_settings) Object.assign(store.config.vad_settings, configData.vad_settings);
                 if(configData.ffmpeg_settings) Object.assign(store.config.ffmpeg_settings, configData.ffmpeg_settings);
                 if(configData.llm_settings) Object.assign(store.config.llm_settings, configData.llm_settings);
+                if(configData.online_asr_settings) Object.assign(store.config.online_asr_settings, configData.online_asr_settings);
 
                 // 加载字典
                 store.dicts.languages = langData;

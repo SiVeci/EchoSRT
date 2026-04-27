@@ -29,6 +29,16 @@ export const getLlmModels = async (apiKey, baseUrl) => {
     return await res.json();
 };
 
+export const getAsrModels = async (apiKey, baseUrl) => {
+    const res = await fetch(`${API_BASE}/api/asr/models?api_key=${encodeURIComponent(apiKey)}&base_url=${encodeURIComponent(baseUrl)}`);
+    if (!res.ok) {
+        let errMsg = "获取模型列表失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
 // --- 核心操作接口 ---
 export const uploadAsset = (file, assetType, taskId, onProgress) => {
     return new Promise((resolve, reject) => {

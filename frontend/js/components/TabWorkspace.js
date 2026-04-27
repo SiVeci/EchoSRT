@@ -7,7 +7,7 @@ export default {
     template: `
         <div class="workspace-container">
             <el-alert title="提示" type="info" show-icon style="margin-bottom: 20px;" :closable="false">
-                请将需要处理的视频拖拽至下方区域。这将会为你初始化一个全新的工作流任务。
+                请将需要处理的视频或音频源文件拖拽至下方区域以新建任务。💡 提示：在此处上传的任何格式音频都会自动经过标准化重采样，以获取最佳的 AI 识别准确率。
             </el-alert>
             
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
@@ -26,7 +26,7 @@ export default {
             >
                 <div class="el-upload__text" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <el-icon style="font-size: 24px; color: #409EFF;"><upload-filled /></el-icon>
-                    <span style="font-size: 15px;">将音/视频文件拖到此处，或 <em>点击上传</em></span>
+                    <span style="font-size: 15px;">拖拽上传源文件 (视频/音频)，或 <em>点击浏览</em></span>
                 </div>
             </el-upload>
             

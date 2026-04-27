@@ -14,6 +14,7 @@ from core.audio_extractor import extract_audio
 from core.whisper_engine import transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
 from core.translate import run_llm_translation
+from core.api_transcribe import run_api_transcription
 from faster_whisper import available_models
 
 # Whisper 支持的 99 种语言映射表
@@ -158,9 +159,6 @@ async def get_llm_models(api_key: str, base_url: str = "https://api.openai.com/v
     base_url = base_url.strip().rstrip("/")
     url = f"{base_url}/models"
     
-    if "siliconflow" in base_url:
-        url += "?type=text&sub_type=chat"
-        
     req = urllib.request.Request(url)
     req.add_header("accept", "application/json")
     req.add_header("authorization", f"Bearer {api_key}")
@@ -170,6 +168,37 @@ async def get_llm_models(api_key: str, base_url: str = "https://api.openai.com/v
             data = json.loads(response.read().decode('utf-8'))
             models = data.get("data", [])
             return [m["id"] for m in models if "id" in m]
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode('utf-8')
+        raise HTTPException(status_code=e.code, detail=f"获取失败: {err_msg}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"拉取模型列表异常: {str(e)}")
+
+@app.get("/api/asr/models")
+async def get_asr_models(api_key: str, base_url: str = "https://api.openai.com/v1"):
+    """从云端语音识别 API 供应商处拉取支持的模型列表"""
+    if not api_key:
+        raise HTTPException(status_code=400, detail="请先填写 API Key")
+    
+    base_url = base_url.strip().rstrip("/")
+    url = f"{base_url}/models"
+    
+    req = urllib.request.Request(url)
+    req.add_header("accept", "application/json")
+    req.add_header("authorization", f"Bearer {api_key}")
+    
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            models = data.get("data", [])
+            all_model_ids = [m["id"] for m in models if "id" in m]
+            
+            # 本地过滤：从返回的通用模型池中，筛选出包含常见语音识别关键字的模型
+            asr_keywords = ["whisper", "asr", "audio", "speech", "stt", "sensevoice", "paraformer"]
+            filtered_models = [m_id for m_id in all_model_ids if any(kw in m_id.lower() for kw in asr_keywords)]
+            
+            # 防呆设计：如果按关键字没有匹配到任何模型，则回退返回所有模型
+            return filtered_models if filtered_models else all_model_ids
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode('utf-8')
         raise HTTPException(status_code=e.code, detail=f"获取失败: {err_msg}")
@@ -421,25 +450,43 @@ async def run_pipeline_task(task_id: str, config_payload: dict):
                 raise Exception("缺少 audio.wav 文件，无法执行语音识别。请先执行提取音频。")
                 
             output_srt = os.path.join(task_dir, "original.srt")
-            model_settings = config_payload.get("model_settings", {})
             transcribe_settings = config_payload.get("transcribe_settings", {})
-            vad_settings = config_payload.get("vad_settings", {})
+            engine = transcribe_settings.get("engine", "local")
             
-            await manager.send_json({"status": "processing", "step": "downloading", "message": "正在读取或下载模型..."}, task_id)
-            monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
-
-            try:
-                segments = await loop.run_in_executor(None, transcribe_audio, audio_path, model_settings, transcribe_settings, vad_settings)
-            finally:
-                monitor_task.cancel()
+            if engine == "api":
+                # ==============================
+                # 分支 A: 云端 API 识别引擎
+                # ==============================
+                online_asr_settings = config_payload.get("online_asr_settings", {})
                 
-            await manager.send_json({"status": "processing", "step": "transcribing", "message": "模型加载完毕，开始语音识别..."}, task_id)
-
-            def progress_callback(start_time, end_time, text):
-                msg = {"status": "processing", "step": "transcribing", "progress": f"{start_time} -> {end_time}", "text": text}
-                asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+                def api_progress_callback(msg_text):
+                    msg = {"status": "processing", "step": "transcribing", "message": msg_text}
+                    asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
                 
-            await loop.run_in_executor(None, generate_srt, segments, output_srt, progress_callback)
+                await loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, api_progress_callback)
+                
+            else:
+                # ==============================
+                # 分支 B: 本地 faster-whisper 引擎
+                # ==============================
+                model_settings = config_payload.get("model_settings", {})
+                vad_settings = config_payload.get("vad_settings", {})
+                
+                await manager.send_json({"status": "processing", "step": "downloading", "message": "正在读取或下载模型..."}, task_id)
+                monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
+
+                try:
+                    segments = await loop.run_in_executor(None, transcribe_audio, audio_path, model_settings, transcribe_settings, vad_settings)
+                finally:
+                    monitor_task.cancel()
+                    
+                await manager.send_json({"status": "processing", "step": "transcribing", "message": "模型加载完毕，开始语音识别..."}, task_id)
+
+                def progress_callback(start_time, end_time, text):
+                    msg = {"status": "processing", "step": "transcribing", "progress": f"{start_time} -> {end_time}", "text": text}
+                    asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+                    
+                await loop.run_in_executor(None, generate_srt, segments, output_srt, progress_callback)
 
         # ==========================================
         # 阶段 3: LLM 智能翻译 (DeepSeek)
@@ -474,4 +521,4 @@ async def run_pipeline_task(task_id: str, config_payload: dict):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False)

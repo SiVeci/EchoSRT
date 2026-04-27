@@ -54,7 +54,15 @@ export default {
                                 <el-input v-model="store.config.llm_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
                             </el-form-item>
 
-                            <el-form-item label="Model Name">
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        Model Name
+                                        <el-tooltip content="指定用于翻译的大语言模型名称。官方接口可填 'gpt-4o' 等，中转代理请视服务商支持填写。点击右侧按钮可直接拉取可用列表。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
                                 <div style="display: flex; gap: 10px; width: 100%;">
                                     <el-select v-model="store.config.llm_settings.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
                                         <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
@@ -65,7 +73,15 @@ export default {
                                 </div>
                             </el-form-item>
 
-                            <el-form-item label="目标语言">
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        目标语言
+                                        <el-tooltip content="指定原声字幕需要被翻译成的目标语言。大模型将根据此选项生成对应的译文。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
                                 <el-select v-model="store.config.llm_settings.target_language" placeholder="选择翻译目标语言" filterable style="width: 100%;">
                                     <el-option v-for="lang in targetLanguages" :key="lang.code" :label="lang.name + ' (' + lang.code + ')'" :value="lang.code"></el-option>
                                 </el-select>
@@ -93,7 +109,7 @@ export default {
                                     </span>
                                 </template>
                                 <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
-                                    <div style="background-color: #f5f7fa; padding: 10px 15px; border-radius: 4px; border: 1px solid #e4e7ed; color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.6;">{{ fixedPrompt }}</div>
+                                    <div style="background-color: #f5f7fa; padding: 10px 15px; border-radius: 4px; border: 1px solid #e4e7ed; color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.5; max-height: 150px; overflow-y: auto;">{{ fixedPrompt }}</div>
                                     <el-input type="textarea" v-model="store.config.llm_settings.system_prompt" :rows="5"
                                         placeholder="[在此输入附加的自定义风格和格式要求，例如：请输出双语字幕，第一行中文...]&#10;留空则使用内置的【高质量通用影视翻译】格式要求。"
                                     ></el-input>
@@ -139,7 +155,7 @@ export default {
         const fixedPrompt = computed(() => {
             const lang = targetLanguages.value.find(l => l.code === store.config.llm_settings.target_language);
             const langName = lang ? lang.name : '中文';
-            return `你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【${langName}】。`;
+            return `你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【${langName}】。\n\n### 🚫 格式死命令：\n1. 保留原文结构：这是字幕片段，不要合并，不要遗漏。\n2. 保留时间轴：所有时间戳必须原样保留，不得修改。\n3. 只输出结果：不要加废话，直接输出 SRT 格式文本。`;
         });
 
         const refreshModels = async () => {

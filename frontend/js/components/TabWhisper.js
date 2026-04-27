@@ -1,6 +1,6 @@
 const { ref, computed, watch } = Vue;
 import { store, addLog } from '../store.js';
-import { executeTask, WS_BASE } from '../api.js';
+import { executeTask, WS_BASE, getAsrModels } from '../api.js';
 
 export default {
     name: 'TabWhisper',
@@ -10,8 +10,15 @@ export default {
                 将提取出的音频输入 faster-whisper 引擎进行识别，生成带有精确时间轴的原始语言字幕 (SRT)。如果你已有现成的原生字幕文件，可直接跳到下一页 [LLM 翻译] 进行独立上传。
             </el-alert>
 
-            <!-- 基础设置卡片 -->
-            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+            <el-tabs v-model="store.config.transcribe_settings.engine" type="border-card" style="margin-bottom: 20px; box-shadow: none;">
+                <!-- 引擎 1: 本地 GPU -->
+                <el-tab-pane name="local">
+                    <template #label>
+                        <span style="font-weight: bold; font-size: 14px;">🖥️ 本地 GPU 引擎</span>
+                    </template>
+                    
+            <!-- 本地引擎：基础设置卡片 -->
+            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5; border-top: none;">
                 <template #header>
                     <div class="card-title">⚙️ 基础设置 (Basic)</div>
                 </template>
@@ -243,7 +250,123 @@ export default {
                     </el-tabs>
                 </el-collapse-item>
                 </el-collapse>
-            </el-card>
+                        </el-card>
+                </el-tab-pane>
+                
+                <!-- 引擎 2: 云端 API -->
+                <el-tab-pane name="api">
+                    <template #label>
+                        <span style="font-weight: bold; font-size: 14px;">☁️ 云端 API 引擎</span>
+                    </template>
+                    
+                    <!-- 云端引擎：基础设置卡片 -->
+                    <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5; border-top: none;">
+                        <template #header>
+                            <div class="card-title">⚙️ 基础设置 (Basic)</div>
+                        </template>
+                        <el-form :model="store.config.online_asr_settings" label-width="140px" label-position="left" size="default">
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        Model Name
+                                        <el-tooltip content="指定调用的云端识别模型名称。通常填写 'whisper-1'，你也可以点击右侧按钮直接从服务商处拉取可用模型列表。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <div style="display: flex; gap: 10px; width: 100%;">
+                                    <el-select v-model="store.config.online_asr_settings.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
+                                        <el-option v-for="model in store.dicts.asr_models" :key="model" :label="model" :value="model"></el-option>
+                                    </el-select>
+                                    <el-button type="primary" plain @click="refreshAsrModels" :loading="isFetchingAsrModels" title="从 API 供应商拉取可用模型">
+                                        <el-icon><Refresh /></el-icon>
+                                    </el-button>
+                                </div>
+                            </el-form-item>
+
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        识别语言
+                                        <el-tooltip content="指定原视频语言。自动检测可能在无声前奏中误判，明确指定可提升准确率和速度。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-select v-model="store.config.online_asr_settings.language" placeholder="自动检测 (Auto)" clearable filterable style="width: 100%;">
+                                    <el-option-group label="🌟 常用语言">
+                                        <el-option v-for="lang in pinnedLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
+                                    </el-option-group>
+                                    <el-option-group label="🌐 其他语言 (A-Z)">
+                                        <el-option v-for="lang in otherLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
+                                    </el-option-group>
+                                </el-select>
+                            </el-form-item>
+                        </el-form>
+                    </el-card>
+
+                    <!-- 云端引擎：高级设置折叠面板 -->
+                    <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+                        <el-collapse v-model="activeApiCollapse" style="border-top: none; border-bottom: none;">
+                            <el-collapse-item name="1">
+                                <template #title>
+                                    <span class="card-title"><el-icon style="margin-right: 5px;"><Tools /></el-icon> 高级设置 (Advanced Settings)</span>
+                                </template>
+                                <el-form :model="store.config.online_asr_settings" label-width="190px" label-position="left" size="small">
+                                    <el-form-item>
+                                        <template #label>
+                                            <span style="display: inline-flex; align-items: center;">
+                                                API Base URL
+                                                <el-tooltip content="兼容 OpenAI 格式的 API 接口地址。" placement="top" trigger="click">
+                                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                                </el-tooltip>
+                                            </span>
+                                        </template>
+                                        <el-input v-model="store.config.online_asr_settings.base_url" placeholder="例如: https://api.openai.com/v1"></el-input>
+                                    </el-form-item>
+
+                                    <el-form-item label="API Key">
+                                        <el-input v-model="store.config.online_asr_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
+                                    </el-form-item>
+
+                                    <el-form-item>
+                                        <template #label>
+                                            <span style="display: inline-flex; align-items: center;">
+                                                Prompt 引导词
+                                                <el-tooltip content="提供专有名词、人名或特定语言风格，引导模型正确输出。" placement="top" trigger="click">
+                                                    <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                                </el-tooltip>
+                                            </span>
+                                        </template>
+                                        <el-input type="textarea" v-model="store.config.online_asr_settings.prompt" :rows="3" placeholder="在此输入引导词 (可选)"></el-input>
+                                    </el-form-item>
+                                    
+                                    <el-divider border-style="dashed" style="margin: 15px 0;"></el-divider>
+
+                                    <el-form-item>
+                                        <template #label>
+                                            <span style="display: inline-flex; align-items: center;">翻译为纯英文<el-tooltip content="无视原视频语言，强制模型直接听译并输出纯英文字幕（单向操作）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
+                                        </template>
+                                        <el-switch v-model="store.config.online_asr_settings.translate"></el-switch>
+                                    </el-form-item>
+                                    <el-form-item>
+                                        <template #label>
+                                            <span style="display: inline-flex; align-items: center;">说话人识别 (Diarization)<el-tooltip content="自动区分不同的说话人并标注标签（注：仅部分如 Lemonfox 等增强型代理接口支持，OpenAI 官方原生暂不支持）。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
+                                        </template>
+                                        <el-switch v-model="store.config.online_asr_settings.speaker_labels"></el-switch>
+                                    </el-form-item>
+                                    <el-form-item>
+                                        <template #label>
+                                            <span style="display: inline-flex; align-items: center;">词级时间戳 (Word)<el-tooltip content="精确到每一个单词的发音时间戳，而不是按长句子划分时间。会略微拖慢生成速度。" placement="top" trigger="click"><el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon></el-tooltip></span>
+                                        </template>
+                                        <el-switch v-model="store.config.online_asr_settings.word_timestamps"></el-switch>
+                                    </el-form-item>
+                                </el-form>
+                            </el-collapse-item>
+                        </el-collapse>
+                    </el-card>
+                </el-tab-pane>
+            </el-tabs>
 
             <!-- 操作按钮与状态指示 -->
             <div class="action-bar">
@@ -254,7 +377,8 @@ export default {
                     :loading="store.isProcessing"
                     :disabled="!store.assets.hasAudio"
                 >
-                    <el-icon style="margin-right: 5px;"><Microphone /></el-icon> 开始执行原声识别
+                <el-icon style="margin-right: 5px;"><Microphone /></el-icon>
+                {{ store.config.transcribe_settings.engine === 'api' ? '▶️ 启动云端 API 识别' : '▶️ 启动本地模型识别' }}
                 </el-button>
                 
                 <span v-if="!store.assets.hasAudio" class="status-text-error">
@@ -288,6 +412,7 @@ export default {
             chunk_length: store.config.transcribe_settings.chunk_length ?? ""
         });
         const downloadedMB = ref(null);
+        const activeApiCollapse = ref([]); // 云端 API 高级面板默认折叠
 
         // 实时同步本地临时状态到全局 config (适配一键全量工作流)
         watch(suppressTokensStr, (val) => {
@@ -312,6 +437,25 @@ export default {
             if (tempArray.length > 1) tempArray.splice(index, 1);
         };
 
+        // 云端 API 引擎模型拉取逻辑
+        const isFetchingAsrModels = ref(false);
+        const refreshAsrModels = async () => {
+            if (!store.config.online_asr_settings.api_key) {
+                ElementPlus.ElMessage.warning("请先填写云端 API Key！");
+                return;
+            }
+            isFetchingAsrModels.value = true;
+            try {
+                const models = await getAsrModels(store.config.online_asr_settings.api_key, store.config.online_asr_settings.base_url);
+                store.dicts.asr_models = models;
+                ElementPlus.ElMessage.success(`成功拉取 ${models.length} 个可用语音模型！`);
+            } catch (e) {
+                ElementPlus.ElMessage.error(e.message);
+            } finally {
+                isFetchingAsrModels.value = false;
+            }
+        };
+
         // 启动识别
         const runTranscribe = async () => {
             if (!store.taskId || !store.assets.hasAudio) return;
@@ -319,7 +463,8 @@ export default {
             store.isProcessing = true;
             store.activeStep = 3; // 进度条跳到原声识别
             downloadedMB.value = null;
-            addLog("▶️ 启动 Whisper 识别引擎...", "info");
+            const engineName = store.config.transcribe_settings.engine === 'api' ? "云端 API" : "本地 Whisper";
+            addLog(`▶️ 启动 ${engineName} 识别引擎...`, "info");
 
             const ws = new WebSocket(`${WS_BASE}/ws/progress/${store.taskId}`);
             ws.onopen = () => addLog("等待模型分配资源...", "success");
@@ -365,7 +510,8 @@ export default {
         return { 
             store, pinnedLanguages, otherLanguages, 
             suppressTokensStr, nullableFields, downloadedMB,
-            addTemperature, removeTemperature, runTranscribe
+            addTemperature, removeTemperature, runTranscribe,
+            isFetchingAsrModels, refreshAsrModels, activeApiCollapse
         };
     }
 };
