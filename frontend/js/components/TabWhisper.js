@@ -10,11 +10,14 @@ export default {
                 将提取出的音频输入 faster-whisper 引擎进行识别，生成带有精确时间轴的原始语言字幕 (SRT)。如果你已有现成的原生字幕文件，可直接跳到下一页 [LLM 翻译] 进行独立上传。
             </el-alert>
 
-            <el-tabs v-model="store.config.transcribe_settings.engine" type="border-card" style="margin-bottom: 20px; box-shadow: none;">
+            <el-tabs v-model="store.config.transcribe_settings.engine" style="margin-bottom: 20px;">
                 <!-- 引擎 1: 本地 GPU -->
                 <el-tab-pane name="local">
                     <template #label>
-                        <span style="font-weight: bold; font-size: 14px;">🖥️ 本地 GPU 引擎</span>
+                        <span style="font-weight: bold; font-size: 14px; display: inline-flex; align-items: center;">
+                            🖥️ 本地 GPU 引擎
+                            <el-icon v-if="store.config.transcribe_settings.engine === 'local'" style="margin-left: 5px; color: #67C23A; font-weight: bold;"><Check /></el-icon>
+                        </span>
                     </template>
                     
             <!-- 本地引擎：基础设置卡片 -->
@@ -256,7 +259,10 @@ export default {
                 <!-- 引擎 2: 云端 API -->
                 <el-tab-pane name="api">
                     <template #label>
-                        <span style="font-weight: bold; font-size: 14px;">☁️ 云端 API 引擎</span>
+                        <span style="font-weight: bold; font-size: 14px; display: inline-flex; align-items: center;">
+                            ☁️ 云端 API 引擎
+                            <el-icon v-if="store.config.transcribe_settings.engine === 'api'" style="margin-left: 5px; color: #67C23A; font-weight: bold;"><Check /></el-icon>
+                        </span>
                     </template>
                     
                     <!-- 云端引擎：基础设置卡片 -->

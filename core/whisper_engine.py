@@ -59,10 +59,14 @@ def transcribe_audio(
     
     print(f"[*] 开始识别音频: {audio_path}")
     
-    # 将外层传入的参数传递给核心 transcribe 方法
+    # 复制配置并移除 faster-whisper 底层不支持的自定义引擎参数
+    transcribe_kwargs = transcribe_settings.copy()
+    transcribe_kwargs.pop("engine", None)
+    
+    # 将清洗后的参数传递给核心 transcribe 方法
     segments, info = _cached_model.transcribe(
         audio_path,
-        **transcribe_settings,
+        **transcribe_kwargs,
         **vad_settings
     )
     
