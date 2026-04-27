@@ -43,4 +43,4 @@ pip install -r requirements.txt
 - [x] **在线模型聚合**：在模型选择界面直接获取并展示 Hugging Face 上的可用模型列表，支持本地缺失时自动下载。
 - [ ] **Docker 容器化部署**：提供 Docker 镜像封装，方便在 NAS 或云服务器上一键运行部署。
 - [x] **集成翻译功能**：在WebUI集成接入LLM模型API的翻译功能，实现一站式获得中文字幕。
-- [x] **接入在线whisper模型**：接入支持标准openai api的在线whisper模型，实现远程识别字幕。
+- [ ] **接入在线whisper模型**：接入支持标准openai api的在线whisper模型，实现远程识别字幕。
