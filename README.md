@@ -32,10 +32,13 @@ pip install -r requirements.txt
 ```
 
 2. **一键启动 WebUI**
-   - **Windows 用户**：直接双击运行 `start.bat`
-   - **Mac / Linux 用户**：在终端运行 `./start.sh` （首次运行前可能需要执行 `chmod +x start.sh`）
+   - 在项目根目录下，使用 Python 运行跨平台统一启动脚本：
+     ```bash
+     python start.py
+     ```
+   - *注：Linux / macOS 用户若系统默认未绑定 `python` 命令，请使用 `python3 start.py`。*
 
-脚本会自动启动前后端服务，并在浏览器中为你打开 `http://127.0.0.1:8080` 的工作台。
+`start.py` 脚本会跨平台自动管理前后端进程，并在浏览器中为你自动打开 `http://127.0.0.1:8080` 的工作台。
 
 > 💡 **保留的 CLI 命令行模式**：依然可以在终端直接运行 `python main.py` 在命令行提取字幕（首次运行会自动初始化配置文件）。
 

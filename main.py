@@ -5,6 +5,8 @@ import shutil
 from core.audio_extractor import extract_audio
 from core.whisper_engine import transcribe_audio
 from core.srt_formatter import generate_srt
+from core.translate import run_llm_translation
+from core.api_transcribe import run_api_transcription
 
 def main():
     print("=== 本地 GPU 视频自动提取字幕工具 ===")
@@ -47,27 +49,54 @@ def main():
     base_name = os.path.splitext(video_path)[0]
     temp_audio_path = f"{base_name}_temp.wav"
     output_srt_path = f"{base_name}.srt"
+    output_translated_path = f"{base_name}_translated.srt"
 
     try:
         # 步骤 1: 提取音频
-        extract_audio(video_path, temp_audio_path)
-        
-        # 步骤 2: 语音识别
-        segments = transcribe_audio(
-            temp_audio_path,
-            model_settings=config.get("model_settings", {}),
-            transcribe_settings=config.get("transcribe_settings", {}),
-            vad_settings=config.get("vad_settings", {})
+        extract_audio(
+            video_path, 
+            temp_audio_path, 
+            ffmpeg_settings=config.get("ffmpeg_settings", {})
         )
         
-        # 步骤 3: 格式化为 SRT 字幕
-        generate_srt(segments, output_srt_path)
+        # 步骤 2 & 3: 语音识别与字幕生成
+        transcribe_settings = config.get("transcribe_settings", {})
+        engine = transcribe_settings.get("engine", "local")
+        
+        if engine == "api":
+            print("\n[*] 正在调用云端 API 进行语音识别...")
+            run_api_transcription(
+                audio_path=temp_audio_path,
+                output_srt_path=output_srt_path,
+                asr_config=config.get("online_asr_settings", {})
+            )
+        else:
+            print("\n[*] 正在使用本地 Whisper 模型进行语音识别...")
+            segments = transcribe_audio(
+                temp_audio_path,
+                model_settings=config.get("model_settings", {}),
+                transcribe_settings=transcribe_settings,
+                vad_settings=config.get("vad_settings", {})
+            )
+            generate_srt(segments, output_srt_path)
+        
+        # 步骤 4: LLM 智能翻译 (可选)
+        llm_config = config.get("llm_settings", {})
+        if llm_config.get("api_key"):
+            choice = input(f"\n[*] 检测到已配置大模型 API Key，是否继续进行智能翻译出熟肉？(y/N): ").strip().lower()
+            if choice == 'y':
+                print(f"[*] 正在调用大模型进行翻译，目标语言: {llm_config.get('target_language', 'zh')}")
+                run_llm_translation(
+                    input_srt_path=output_srt_path,
+                    output_srt_path=output_translated_path,
+                    llm_config=llm_config
+                )
         
     except Exception as e:
         print(f"\n[程序异常中止] 错误详情: {e}")
         
     finally:
-        # 步骤 4: 清理临时文件
+        # 步骤 5: 清理临时文件
         if os.path.exists(temp_audio_path):
             os.remove(temp_audio_path)
             print(f"[*] 已清理临时音频文件: {temp_audio_path}")
