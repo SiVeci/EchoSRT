@@ -34,6 +34,7 @@ const app = createApp({
                 ]);
                 
                 // 将后端拉取到的配置镜像同步到全局 Store
+                if(configData.system_settings) Object.assign(store.config.system_settings, configData.system_settings);
                 if(configData.secrets) Object.assign(store.config.secrets, configData.secrets);
                 if(configData.model_settings) Object.assign(store.config.model_settings, configData.model_settings);
                 if(configData.transcribe_settings) Object.assign(store.config.transcribe_settings, configData.transcribe_settings);

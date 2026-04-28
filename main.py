@@ -8,6 +8,25 @@ from core.srt_formatter import generate_srt
 from core.translate import run_llm_translation
 from core.api_transcribe import run_api_transcription
 
+def set_global_proxy(proxy_url: str):
+    """动态配置系统代理与防呆纠正"""
+    proxy = proxy_url.strip() if proxy_url else ""
+    if proxy:
+        if proxy.startswith("socks5://"):
+            proxy = proxy.replace("socks5://", "socks5h://", 1)
+        elif not proxy.startswith("http://") and not proxy.startswith("https://") and not proxy.startswith("socks5h://"):
+            proxy = f"http://{proxy}"
+        
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
+        os.environ["http_proxy"] = proxy
+        os.environ["https_proxy"] = proxy
+        os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
+        print(f"[*] 已启用全局网络代理: {proxy}")
+    else:
+        for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"]:
+            os.environ.pop(k, None)
+
 def main():
     print("=== 本地 GPU 视频自动提取字幕工具 ===")
     
@@ -29,6 +48,9 @@ def main():
     hf_token = config.get("secrets", {}).get("hf_token", "")
     if hf_token:
         os.environ["HF_TOKEN"] = hf_token
+
+    # 设置全局代理
+    set_global_proxy(config.get("system_settings", {}).get("network_proxy", ""))
 
     # 提示用户输入视频路径，并去除两端可能存在的文件路径引号（处理文件拖拽的情况）
     video_path = input("请输入需要处理的视频文件路径: ").strip('\"\'')

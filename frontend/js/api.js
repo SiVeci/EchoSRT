@@ -11,6 +11,15 @@ async function fetchGet(endpoint) {
 
 // --- 配置与字典接口 ---
 export const getConfig = () => fetchGet('/api/config');
+export const updateConfig = async (config) => {
+    const res = await fetch(`${API_BASE}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config)
+    });
+    if (!res.ok) throw new Error("保存配置失败");
+    return await res.json();
+};
 export const restoreConfig = async () => {
     const res = await fetch(`${API_BASE}/api/config/restore`, { method: "POST" });
     if (!res.ok) throw new Error("恢复配置失败");

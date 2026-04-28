@@ -56,6 +56,32 @@ app.add_middleware(
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
+def set_global_proxy(proxy_url: str):
+    """动态配置系统代理与防呆纠正"""
+    proxy = proxy_url.strip() if proxy_url else ""
+    if proxy:
+        if proxy.startswith("socks5://"):
+            proxy = proxy.replace("socks5://", "socks5h://", 1)
+        elif not proxy.startswith("http://") and not proxy.startswith("https://") and not proxy.startswith("socks5h://"):
+            proxy = f"http://{proxy}"
+        
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
+        os.environ["http_proxy"] = proxy
+        os.environ["https_proxy"] = proxy
+        os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
+        print(f"[*] 已动态应用全局网络代理: {proxy}")
+    else:
+        for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"]:
+            os.environ.pop(k, None)
+
+# 启动时自动读取并应用代理
+try:
+    if os.path.exists("config.json"):
+        with open("config.json", "r", encoding="utf-8") as f:
+            set_global_proxy(json.load(f).get("system_settings", {}).get("network_proxy", ""))
+except Exception: pass
+
 # ==========================================
 # WebSocket 连接管理器
 # ==========================================
@@ -120,6 +146,17 @@ async def restore_config():
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取恢复后的配置失败: {str(e)}")
+
+@app.post("/api/config")
+async def update_config(payload: dict = Body(...)):
+    """接收并保存全局配置，同时立刻应用系统级设置（如代理）"""
+    try:
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        set_global_proxy(payload.get("system_settings", {}).get("network_proxy", ""))
+        return {"message": "配置已保存并生效"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
 
 @app.get("/api/languages")
 async def get_languages():

@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 - [ ] **Docker 容器化部署**：提供 Docker 镜像封装，方便在 NAS 或云服务器上一键运行部署。
 - [ ] **任务队列功能**：一次性上传多个视频文件，按照自定义排序自动开展任务。
-- [ ] **HTTP 代理支持**：配置本地代理以加速 Hugging Face 大模型的下载。
+- [x] **HTTP 代理支持**：配置本地代理以加速 Hugging Face 大模型的下载及访问在线模型API。
 - [x] **在线模型聚合**：在模型选择界面直接获取并展示 Hugging Face 上的可用模型列表，支持本地缺失时自动下载。
 - [x] **集成翻译功能**：在WebUI集成接入LLM模型API的翻译功能，实现一站式获得中文字幕。
 - [x] **接入在线whisper模型**：接入支持标准openai api的在线whisper模型，实现远程识别字幕。

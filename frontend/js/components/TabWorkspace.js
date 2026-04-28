@@ -1,6 +1,6 @@
-const { ref, onMounted } = Vue;
+const { ref, onMounted, watch } = Vue;
 import { store, addLog } from '../store.js';
-import { uploadAsset, getTasks, deleteTask } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, updateConfig } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -9,7 +9,7 @@ export default {
             <el-alert title="提示" type="info" show-icon style="margin-bottom: 20px;" :closable="false">
                 请将需要处理的视频或音频源文件拖拽至下方区域以新建任务。💡 提示：在此处上传的任何格式音频都会自动经过标准化重采样，以获取最佳的 AI 识别准确率。
             </el-alert>
-            
+        
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
                     <div class="card-title">📁 新建任务</div>
@@ -76,6 +76,33 @@ export default {
                     </el-collapse-item>
                 </el-collapse>
             </el-card>
+
+            <!-- 全局网络代理设置 (单行紧凑布局) -->
+            <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5; padding: 5px 0;">
+                <div style="display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 40px;">
+                    <div style="font-weight: bold; color: #303133; display: flex; align-items: center; gap: 8px;">
+                        <el-icon style="font-size: 18px; color: #409EFF;"><Position /></el-icon>
+                        <span>代理设置</span>
+                        <el-tooltip content="加速大模型下载及 API 请求。开启开关并填写完整后自动生效。" placement="top">
+                            <el-icon style="color: #909399; cursor: pointer;"><QuestionFilled /></el-icon>
+                        </el-tooltip>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <el-switch v-model="proxyEnabled" @change="handleProxyChange" active-text="开启" inactive-text="关闭"></el-switch>
+                        
+                        <div style="display: flex; align-items: center; gap: 8px;" :style="{ opacity: proxyEnabled ? 1 : 0.5, pointerEvents: proxyEnabled ? 'auto' : 'none', filter: proxyEnabled ? 'none' : 'grayscale(100%)' }">
+                            <el-select v-model="proxyProtocol" @change="handleProxyChange" style="width: 105px; --el-input-text-align: center;">
+                                <el-option label="HTTP" value="http://" style="text-align: center;"></el-option>
+                                <el-option label="SOCKS5" value="socks5://" style="text-align: center;"></el-option>
+                            </el-select>
+                            <el-input v-model="proxyHost" @blur="handleProxyChange" @keyup.enter="handleProxyChange" placeholder="IP / 域名 (如 127.0.0.1)" style="width: 180px;"></el-input>
+                            <span style="font-weight: bold; color: #909399;">:</span>
+                            <el-input-number v-model="proxyPort" @change="handleProxyChange" @blur="handleProxyChange" @keyup.enter="handleProxyChange" :min="1" :max="65535" :controls="false" placeholder="端口" style="width: 75px; --el-input-text-align: center;"></el-input-number>
+                        </div>
+                    </div>
+                </div>
+            </el-card>
         </div>
     `,
     setup() {
@@ -85,6 +112,53 @@ export default {
         const taskList = ref([]);
         const isLoadingTasks = ref(false);
         const activeCollapse = ref([]); // 默认折叠状态
+        
+        // 代理 UI 状态变量
+        const proxyEnabled = ref(false);
+        const proxyProtocol = ref("http://");
+        const proxyHost = ref("");
+        const proxyPort = ref(null);
+
+        // 解析后端传来的代理字符串，映射到前端 UI
+        const parseProxyString = (proxyStr) => {
+            if (!proxyStr) {
+                proxyEnabled.value = false;
+                return;
+            }
+            proxyEnabled.value = true;
+            
+            let protocol = "http://";
+            let rest = proxyStr;
+            
+            if (proxyStr.startsWith("socks5://") || proxyStr.startsWith("socks5h://")) {
+                protocol = "socks5://"; // UI 统一显示 socks5://
+                rest = proxyStr.replace(/^socks5h?:\/\//, "");
+            } else if (proxyStr.startsWith("http://") || proxyStr.startsWith("https://")) {
+                protocol = proxyStr.startsWith("https://") ? "https://" : "http://";
+                rest = proxyStr.replace(/^https?:\/\//, "");
+            }
+            
+            proxyProtocol.value = protocol;
+            
+            const lastColonIdx = rest.lastIndexOf(":");
+            if (lastColonIdx !== -1) {
+                proxyHost.value = rest.substring(0, lastColonIdx);
+                proxyPort.value = parseInt(rest.substring(lastColonIdx + 1)) || null;
+            } else {
+                proxyHost.value = rest;
+                proxyPort.value = null;
+            }
+        };
+
+        // 监听全局 store 的变化，初始化拆解数据 (从后端拉取配置后触发)
+        watch(() => store.config.system_settings.network_proxy, (newVal) => {
+            // 如果 UI 目前拼接的值和后端值一致，不再重复解析，防止相互循环触发
+            const currentUIStr = proxyEnabled.value ? `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}` : "";
+            const currentUIStrSocks5h = proxyEnabled.value ? `${proxyProtocol.value.replace('socks5://', 'socks5h://')}${proxyHost.value}:${proxyPort.value}` : "";
+            if (newVal !== currentUIStr && newVal !== currentUIStrSocks5h) {
+                parseProxyString(newVal);
+            }
+        }, { immediate: true });
 
         const fetchTasks = async () => {
             isLoadingTasks.value = true;
@@ -96,6 +170,37 @@ export default {
         onMounted(() => {
             fetchTasks();
         });
+
+        const handleProxyChange = async () => {
+            // 1. 如果用户关闭了开关，则安全置空并发送给后端
+            if (!proxyEnabled.value) {
+                store.config.system_settings.network_proxy = "";
+                await saveProxyConfig("已恢复直连模式");
+                return;
+            }
+            
+            // 2. 如果开启了开关，拦截“半残状态”进行温和提示
+            if (!proxyHost.value || !proxyPort.value) {
+                ElementPlus.ElMessage.warning("⚠️ 请完整填写代理的 IP/域名 和 端口号！");
+                return;
+            }
+            
+            // 3. 校验通过，拼接字符串并发给后端
+            const fullProxy = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
+            if (store.config.system_settings.network_proxy === fullProxy) return; // 无变化不保存
+            
+            store.config.system_settings.network_proxy = fullProxy;
+            await saveProxyConfig("全局网络代理已生效！");
+        };
+
+        const saveProxyConfig = async (successMsg) => {
+            try {
+                await updateConfig(store.config);
+                ElementPlus.ElMessage.success(successMsg);
+            } catch (e) {
+                ElementPlus.ElMessage.error("代理配置保存失败");
+            }
+        };
 
         const handleUpload = async (options) => {
             addLog(`开始上传源文件: ${options.file.name}...`, "info");
@@ -174,6 +279,11 @@ export default {
             taskList,
             isLoadingTasks,
             activeCollapse,
+            proxyEnabled,
+            proxyProtocol,
+            proxyHost,
+            proxyPort,
+            handleProxyChange,
             handleUpload,
             loadTask,
             removeTask,

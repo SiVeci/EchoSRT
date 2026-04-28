@@ -1,4 +1,7 @@
 {
+  "system_settings": {
+    "network_proxy": ""
+  },
   "secrets": {
     "hf_token": ""
   },
