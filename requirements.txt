@@ -5,5 +5,4 @@ faster-whisper
 openai
 websockets
 pydub
-PySocks
-socksio
+httpx[socks]

@@ -15,7 +15,7 @@
 
 - Python >= 3.8
 - FFmpeg 
-  - *Windows*：可直接将 `ffmpeg.exe` 放入项目的 `ffmpeg/bin/` 目录下。
+  - *Windows*：可直接将 `ffmpeg.exe` 放入项目的 `bin/ffmpeg/bin/` 目录下。
   - *Mac/Linux*：请通过包管理器全局安装（如 `brew install ffmpeg` 或 `sudo apt install ffmpeg`）。
 
 - **NVIDIA GPU 加速环境 (可选但强烈推荐)**
