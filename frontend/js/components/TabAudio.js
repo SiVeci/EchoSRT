@@ -1,6 +1,6 @@
 const { ref } = Vue;
-import { store, addLog } from '../store.js';
-import { executeTask, WS_BASE, uploadAsset } from '../api.js';
+import { store, addLog, connectTaskMonitor } from '../store.js';
+import { executeTask, uploadAsset } from '../api.js';
 
 export default {
     name: 'TabAudio',
@@ -100,15 +100,14 @@ export default {
             </div>
             
             <!-- FFmpeg 提取进度动态显示 -->
-            <div v-if="extractedTime && store.isProcessing" style="margin-top: 15px; color: #409EFF; font-size: 14px;">
+            <div v-if="store.taskState.extractedTime && store.isProcessing && store.activeStep === 2" style="margin-top: 15px; color: #409EFF; font-size: 14px;">
                 <el-icon class="is-loading" style="margin-right: 5px;"><Loading /></el-icon>
-                正在提取音频，已处理至：<strong>{{ extractedTime }}</strong> ...
+                正在提取音频，已处理至：<strong>{{ store.taskState.extractedTime }}</strong> ...
             </div>
         </div>
     `,
     setup() {
         const isUploading = ref(false);
-        const extractedTime = ref("");
         const activeCollapse = ref([]); // 默认折叠状态
 
         // 处理独立上传音频
@@ -135,40 +134,28 @@ export default {
             if (!store.taskId || !store.assets.hasVideo) return;
             store.isProcessing = true;
             store.activeStep = 2; // 更新进度条状态
-            extractedTime.value = "";
+            store.taskState.extractedTime = "";
             addLog("▶️ 启动 FFmpeg 音频提取...", "info");
 
-            const ws = new WebSocket(`${WS_BASE}/ws/progress/${store.taskId}`);
-            ws.onopen = () => addLog("已连接到后端监视器...", "success");
-            ws.onerror = () => { addLog("WebSocket 连接异常！", "error"); store.isProcessing = false; };
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.status === "processing") {
-                    if (data.extracted_time) extractedTime.value = data.extracted_time;
-                    else if (data.message) addLog(data.message, "info");
-                } else if (data.status === "completed") {
-                    store.isProcessing = false;
+            connectTaskMonitor(
+                store.taskId,
+                () => {
                     store.assets.hasAudio = true;
                     store.activeStep = 3; // 音频提取完毕，进入识别待命
                     addLog("🎉 音频提取完毕！", "success");
                     ElementPlus.ElMessage.success("提取完毕！");
-                    ws.close();
-                } else if (data.status === "error") {
-                    store.isProcessing = false;
-                    addLog(`❌ 发生错误: ${data.message}`, "error");
-                    ElementPlus.ElMessage.error(`任务失败: ${data.message}`);
-                    ws.close();
-                }
-            };
+                },
+                () => {}
+            );
+
             try {
                 await executeTask(store.taskId, ["extract"], store.config);
             } catch (e) {
                 addLog(`请求启动任务失败: ${e.message}`, "error");
                 store.isProcessing = false;
-                ws.close();
             }
         };
 
-        return { store, isUploading, extractedTime, activeCollapse, handleAudioUpload, runExtract };
+        return { store, isUploading, activeCollapse, handleAudioUpload, runExtract };
     }
 };

@@ -1,4 +1,4 @@
-const { createApp, ref, onMounted } = Vue;
+const { createApp, ref, onMounted, watch } = Vue;
 
 // 引入组件
 import TabWorkspace from './components/TabWorkspace.js';
@@ -8,8 +8,8 @@ import TabLLM from './components/TabLLM.js';
 import GlobalConsole from './components/GlobalConsole.js';
 
 // 引入全局状态与网络请求
-import { store, addLog } from './store.js';
-import { getConfig, getLanguages, getModels, executeTask, WS_BASE } from './api.js';
+import { store, addLog, connectTaskMonitor } from './store.js';
+import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus } from './api.js';
 
 const app = createApp({
     components: {
@@ -22,6 +22,15 @@ const app = createApp({
     setup() {
         // 控制当前激活的 Tab 页面，默认停留在第一页
         const activeTab = ref('workspace');
+
+        // 监听运行状态，同步到 localStorage
+        watch(() => store.isProcessing, (isProcessing) => {
+            if (isProcessing && store.taskId) {
+                localStorage.setItem("echo_srt_active_task", store.taskId);
+            } else {
+                localStorage.removeItem("echo_srt_active_task");
+            }
+        });
 
         // 页面加载时，拉取后端配置与字典数据
         onMounted(async () => {
@@ -48,11 +57,65 @@ const app = createApp({
                 store.dicts.models = modelData;
 
                 addLog("✅ 基础配置加载完成，就绪！", "success");
+                
+                // 探测并恢复意外中断的任务状态
+                await restoreActiveTask();
             } catch (e) {
                 addLog(`❌ 初始化失败: ${e.message}`, "error");
                 ElementPlus.ElMessage.error("无法连接到后端服务，请检查 app.py 是否启动。");
             }
+            
+            // [新增] 启动全局流水线状态轮询
+            setInterval(async () => {
+                try {
+                    const status = await getPipelineStatus();
+                    store.pipelineStatus = status;
+                    
+                    // 自动根据流水线状态，动态更新右侧进度条和焦点菊花图
+                    if (store.taskId && status[store.taskId]) {
+                        const state = status[store.taskId].current_step;
+                        if (state === 'pending_extract' || state === 'extracting') store.activeStep = 2;
+                        else if (state === 'pending_transcribe' || state === 'transcribing') store.activeStep = 3;
+                        else if (state === 'pending_translate' || state === 'translating') store.activeStep = 4;
+                        else if (state === 'completed') store.activeStep = 5;
+                        
+                        store.isProcessing = (state !== 'completed' && state !== 'error');
+                    }
+                } catch (e) {}
+            }, 2000);
         });
+
+        const restoreActiveTask = async () => {
+            const activeTaskId = localStorage.getItem("echo_srt_active_task");
+            if (!activeTaskId) return;
+            
+            addLog(`🔄 发现未完成的任务记录，正在探测后端状态...`, "warning");
+            try {
+                // 1. 恢复任务面板的资产标识
+                const tasks = await getTasks();
+                const taskMeta = tasks.find(t => t.task_id === activeTaskId);
+                if (taskMeta) {
+                    store.taskId = activeTaskId;
+                    store.assets.hasVideo = taskMeta.has_video;
+                    store.assets.hasAudio = taskMeta.has_audio;
+                    store.assets.hasOriginalSrt = taskMeta.has_original_srt;
+                    store.assets.hasTranslatedSrt = taskMeta.has_translated_srt;
+                }
+
+                // 2. 问询后端最新切片
+                const statusData = await getTaskStatus(activeTaskId);
+                if (statusData.status === "processing") {
+                    store.isProcessing = true;
+                    addLog(`⚡ 后端任务仍在运行，正在重新接管数据流...`, "success");
+                    connectTaskMonitor(activeTaskId, null, null);
+                } else {
+                    localStorage.removeItem("echo_srt_active_task");
+                }
+            } catch (e) {
+                console.error("恢复任务状态失败", e);
+                localStorage.removeItem("echo_srt_active_task");
+            }
+        };
 
         // 智能启动工作流
         const runPipeline = async (includeTranslation = true) => {
@@ -85,28 +148,9 @@ const app = createApp({
             store.isProcessing = true;
             addLog(`🚀 启动工作流，执行链路: [ ${steps.join(" ➡️ ")} ]`, "success");
 
-            const ws = new WebSocket(`${WS_BASE}/ws/progress/${store.taskId}`);
-            ws.onopen = () => addLog("已连接到全局监视器，等待引擎响应...", "info");
-            ws.onerror = () => { addLog("WebSocket 连接异常！", "error"); store.isProcessing = false; };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.status === "processing") {
-                    // 动态更新右侧的垂直步骤条
-                    if (data.step === "extract_audio") store.activeStep = 2;
-                    else if (data.step === "downloading" || data.step === "transcribing") store.activeStep = 3;
-                    else if (data.step === "translating") store.activeStep = 4;
-
-                    // 智能分类并渲染日志
-                    if (data.progress) {
-                        addLog(`[${data.progress}] ${data.text}`, "progress");
-                    } else if (data.message) {
-                        if (data.message.includes("❌")) addLog(data.message, "error");
-                        else if (data.message.includes("⚠️")) addLog(data.message, "warning");
-                        else addLog(data.message, "info");
-                    }
-                } else if (data.status === "completed") {
-                    store.isProcessing = false;
+            connectTaskMonitor(
+                store.taskId,
+                () => {
                     // 批量点亮右侧产物下载按钮的状态
                     if (steps.includes("extract")) store.assets.hasAudio = true;
                     if (steps.includes("transcribe")) store.assets.hasOriginalSrt = true;
@@ -122,21 +166,17 @@ const app = createApp({
                     }
                     
                     ElementPlus.ElMessage.success("🎉 流程顺利完成！请在右侧控制台下载产物。");
-                    ws.close();
-                } else if (data.status === "error") {
-                    store.isProcessing = false;
-                    addLog(`❌ 工作流中断: ${data.message}`, "error");
-                    ElementPlus.ElMessage.error(`任务失败: ${data.message}`);
-                    ws.close();
+                },
+                (error) => {
+                    ElementPlus.ElMessage.error(`工作流异常: ${error.message}`);
                 }
-            };
+            );
 
             try {
                 await executeTask(store.taskId, steps, store.config);
             } catch (e) {
                 addLog(`请求启动工作流失败: ${e.message}`, "error");
                 store.isProcessing = false;
-                ws.close();
             }
         };
 

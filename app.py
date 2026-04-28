@@ -6,8 +6,9 @@ import shutil
 import urllib.request
 import urllib.error
 from typing import Dict, Any
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, Form, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.responses import FileResponse
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.audio_extractor import extract_audio
@@ -41,7 +42,15 @@ SUPPORTED_LANGUAGES = {
     "vi": "vietnamese", "yi": "yiddish", "yo": "yoruba", "zh": "chinese"
 }
 
-app = FastAPI(title="EchoSRT Web API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """启动流水线车间的三大常驻 Worker 协程"""
+    asyncio.create_task(worker_extract_loop())
+    asyncio.create_task(worker_transcribe_loop())
+    asyncio.create_task(worker_translate_loop())
+    yield
+
+app = FastAPI(title="EchoSRT Web API", lifespan=lifespan)
 
 # 配置 CORS，允许前端跨域请求
 app.add_middleware(
@@ -91,6 +100,8 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         # 为每个 WebSocket 添加一个异步锁，防止并发发送数据导致底层协议崩溃
         self.locks: Dict[str, asyncio.Lock] = {}
+        # 缓存每个任务的最后一次状态推送，用于前端刷新后恢复进度
+        self.task_states: Dict[str, dict] = {}
 
     async def connect(self, websocket: WebSocket, task_id: str):
         await websocket.accept()
@@ -104,7 +115,9 @@ class ConnectionManager:
             del self.locks[task_id]
 
     async def send_json(self, data: dict, task_id: str):
-        """向指定任务的前端推送 JSON 格式数据（加锁保证线程安全）"""
+        """向指定任务的前端推送 JSON 格式数据（加锁保证线程安全），并缓存最新状态"""
+        self.task_states[task_id] = data
+        
         ws = self.active_connections.get(task_id)
         lock = self.locks.get(task_id)
         if ws and lock:
@@ -115,6 +128,15 @@ class ConnectionManager:
                 pass # 忽略因前端主动断开而导致的发送异常
 
 manager = ConnectionManager()
+
+# ==========================================
+# 全局流水线队列与状态
+# ==========================================
+q_extract = asyncio.Queue()
+q_transcribe = asyncio.Queue()
+q_translate = asyncio.Queue()
+
+global_tasks_status: Dict[str, dict] = {}
 
 # ==========================================
 # API 路由
@@ -273,8 +295,12 @@ async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: s
     else:
         raise HTTPException(status_code=400, detail="不支持的资产类型")
     
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # 使用线程池执行大文件拷贝，并大幅增加 chunk size (10MB) 加速本地 I/O
+    def _save_file(src, dest):
+        with open(dest, "wb") as buffer:
+            shutil.copyfileobj(src, buffer, length=1024*1024*10)
+            
+    await asyncio.to_thread(_save_file, file.file, save_path)
         
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta_data, f, ensure_ascii=False)
@@ -282,12 +308,16 @@ async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: s
     return {"task_id": task_id, "filename": file.filename, "message": f"{asset_type} 上传成功"}
 
 @app.post("/api/task/execute")
-async def execute_task(background_tasks: BackgroundTasks, payload: dict = Body(...)):
-    """接收配置并按步骤执行工作流任务"""
+async def execute_task(payload: dict = Body(...)):
+    """接收配置并按步骤执行工作流任务，加入流水线队列"""
     task_id = payload.get("task_id")
     if not task_id:
         raise HTTPException(status_code=400, detail="缺少 task_id")
         
+    steps = payload.get("steps", [])
+    if not steps:
+        raise HTTPException(status_code=400, detail="未指定执行步骤")
+
     # 将前端传来的新参数保存回 config.json
     config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
     try:
@@ -296,8 +326,25 @@ async def execute_task(background_tasks: BackgroundTasks, payload: dict = Body(.
     except Exception as e:
         print(f"[警告] 无法保存最新配置到 config.json: {e}")
 
-    background_tasks.add_task(run_pipeline_task, task_id, payload)
-    return {"task_id": task_id, "message": "工作流已启动"}
+    # 初始化流水线状态
+    global_tasks_status[task_id] = {
+        "steps": steps,
+        "current_step": "pending",
+        "config": payload
+    }
+
+    # 按照步骤顺序，将任务投入第一个对应的车间队列
+    if "extract" in steps:
+        global_tasks_status[task_id]["current_step"] = "pending_extract"
+        await q_extract.put((task_id, payload))
+    elif "transcribe" in steps:
+        global_tasks_status[task_id]["current_step"] = "pending_transcribe"
+        await q_transcribe.put((task_id, payload))
+    elif "translate" in steps:
+        global_tasks_status[task_id]["current_step"] = "pending_translate"
+        await q_translate.put((task_id, payload))
+
+    return {"task_id": task_id, "message": "工作流已加入流水线队列"}
 
 @app.websocket("/ws/progress/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
@@ -309,6 +356,21 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(task_id)
+
+@app.get("/api/task/{task_id}/status")
+async def get_task_status(task_id: str):
+    """获取指定任务的实时运行状态（从内存缓存中读取）"""
+    if task_id in manager.task_states:
+        return manager.task_states[task_id]
+    
+    # 如果内存中没有（比如后端重启了，或者任务还没开始）
+    # 前端可以依据这个 unknown 状态，回退到检查文件产物状态
+    return {"status": "unknown"}
+
+@app.get("/api/pipeline/status")
+async def get_pipeline_status():
+    """获取流水线上所有任务的实时工位状态（供前端看板轮询）"""
+    return global_tasks_status
 
 @app.get("/api/download/{task_id}")
 async def download_srt(task_id: str, type: str = "original"):
@@ -376,11 +438,16 @@ async def delete_task(task_id: str):
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if os.path.exists(task_dir):
         shutil.rmtree(task_dir)
+        
+    # 清理内存中残留的任务状态
+    manager.task_states.pop(task_id, None)
+    global_tasks_status.pop(task_id, None)
     return {"message": "任务删除成功"}
 
 # ==========================================
 # 后台任务逻辑
 # ==========================================
+
 
 def get_hf_repo_id(model_size: str) -> str:
     """推导 Hugging Face 上的完整仓库名称"""
@@ -424,45 +491,19 @@ async def monitor_download(task_id: str, download_root: str, model_size: str):
     except Exception as e:
         print(f"[监控线程异常] {e}")
 
-# 任务并发计数与空闲计时器
-active_tasks_count = 0
-idle_timer_task = None
 
-async def auto_unload_timer():
-    """空闲计时器：等待一定时间无任务后自动卸载模型"""
-    try:
-        # 设置空闲超时时间，例如 300秒 (5分钟)
-        await asyncio.sleep(300)
-        print("[*] 系统空闲已达 5 分钟，执行自动清理...")
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, unload_model)
-    except asyncio.CancelledError:
-        # 倒计时被取消，说明期间有新任务进来了，无需任何操作
-        pass
-
-async def run_pipeline_task(task_id: str, config_payload: dict):
-    """
-    真正的模块化流水线：根据 steps 参数动态调度执行节点
-    """
-    global active_tasks_count, idle_timer_task
+async def worker_extract_loop():
+    """工位 1：专门处理音频提取的 Worker"""
     loop = asyncio.get_running_loop()
-    
-    task_dir = os.path.join(WORKSPACE_DIR, task_id)
-    steps = config_payload.get("steps", [])
-    
-    active_tasks_count += 1
-    if idle_timer_task is not None:
-        idle_timer_task.cancel()
-        idle_timer_task = None
+    while True:
+        task_id, config_payload = await q_extract.get()
+        steps = config_payload.get("steps", [])
+        task_dir = os.path.join(WORKSPACE_DIR, task_id)
+        
+        if task_id in global_tasks_status:
+            global_tasks_status[task_id]["current_step"] = "extracting"
 
-    try:
-        if not os.path.exists(task_dir):
-            raise Exception("任务空间目录不存在。")
-            
-        # ==========================================
-        # 阶段 1: 音频提取 (FFmpeg)
-        # ==========================================
-        if "extract" in steps:
+        try:
             video_files = [f for f in os.listdir(task_dir) if f.startswith("video.")]
             if not video_files:
                 raise Exception("缺少视频源文件，无法执行音频提取。请先上传视频。")
@@ -478,34 +519,59 @@ async def run_pipeline_task(task_id: str, config_payload: dict):
             await manager.send_json({"status": "processing", "step": "extract_audio", "message": "正在提取音频..."}, task_id)
             await loop.run_in_executor(None, extract_audio, video_path, audio_path, audio_progress_callback, ffmpeg_settings)
 
-        # ==========================================
-        # 阶段 2: 语音识别 (Whisper)
-        # ==========================================
-        if "transcribe" in steps:
+            # 判断是否需要流转到下一工位
+            if "transcribe" in steps:
+                if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_transcribe"
+                await q_transcribe.put((task_id, config_payload))
+            elif "translate" in steps: # 罕见跳跃逻辑容错
+                if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_translate"
+                await q_translate.put((task_id, config_payload))
+            else:
+                if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
+                await manager.send_json({"status": "completed", "step": "done", "message": "任务流水线执行完毕！"}, task_id)
+
+        except Exception as e:
+            print(f"[提取车间错误] {e}")
+            if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
+            await manager.send_json({"status": "error", "message": f"音频提取失败: {str(e)}"}, task_id)
+        finally:
+            q_extract.task_done()
+
+
+async def worker_transcribe_loop():
+    """工位 2：专门处理语音识别的 Worker（内建空闲释放机制）"""
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            # 巧用 wait_for，如果 300 秒内拿不到新任务，触发超时清理内存
+            task_id, config_payload = await asyncio.wait_for(q_transcribe.get(), timeout=300.0)
+        except asyncio.TimeoutError:
+            await loop.run_in_executor(None, unload_model)
+            continue
+
+        steps = config_payload.get("steps", [])
+        task_dir = os.path.join(WORKSPACE_DIR, task_id)
+        
+        if task_id in global_tasks_status:
+            global_tasks_status[task_id]["current_step"] = "transcribing"
+
+        try:
             audio_path = os.path.join(task_dir, "audio.wav")
             if not os.path.exists(audio_path):
-                raise Exception("缺少 audio.wav 文件，无法执行语音识别。请先执行提取音频。")
+                raise Exception("缺少 audio.wav 文件，无法执行语音识别。")
                 
             output_srt = os.path.join(task_dir, "original.srt")
             transcribe_settings = config_payload.get("transcribe_settings", {})
             engine = transcribe_settings.get("engine", "local")
             
             if engine == "api":
-                # ==============================
-                # 分支 A: 云端 API 识别引擎
-                # ==============================
                 online_asr_settings = config_payload.get("online_asr_settings", {})
-                
                 def api_progress_callback(msg_text):
                     msg = {"status": "processing", "step": "transcribing", "message": msg_text}
                     asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
-                
                 await loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, api_progress_callback)
                 
             else:
-                # ==============================
-                # 分支 B: 本地 faster-whisper 引擎
-                # ==============================
                 model_settings = config_payload.get("model_settings", {})
                 vad_settings = config_payload.get("vad_settings", {})
                 
@@ -525,13 +591,36 @@ async def run_pipeline_task(task_id: str, config_payload: dict):
                     
                 await loop.run_in_executor(None, generate_srt, segments, output_srt, progress_callback)
 
-        # ==========================================
-        # 阶段 3: LLM 智能翻译 (DeepSeek)
-        # ==========================================
-        if "translate" in steps:
+            # 判断是否需要流转到下一工位
+            if "translate" in steps:
+                if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_translate"
+                await q_translate.put((task_id, config_payload))
+            else:
+                if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
+                await manager.send_json({"status": "completed", "step": "done", "message": "任务流水线执行完毕！"}, task_id)
+
+        except Exception as e:
+            print(f"[识别车间错误] {e}")
+            if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
+            await manager.send_json({"status": "error", "message": f"语音识别失败: {str(e)}"}, task_id)
+        finally:
+            q_transcribe.task_done()
+
+
+async def worker_translate_loop():
+    """工位 3：专门处理 LLM 翻译的 Worker"""
+    loop = asyncio.get_running_loop()
+    while True:
+        task_id, config_payload = await q_translate.get()
+        task_dir = os.path.join(WORKSPACE_DIR, task_id)
+        
+        if task_id in global_tasks_status:
+            global_tasks_status[task_id]["current_step"] = "translating"
+
+        try:
             input_srt = os.path.join(task_dir, "original.srt")
             if not os.path.exists(input_srt):
-                raise Exception("缺少 original.srt 生肉字幕，无法执行翻译。请先执行识别或上传外置字幕。")
+                raise Exception("缺少 original.srt 生肉字幕，无法执行翻译。")
                 
             output_translated = os.path.join(task_dir, "translated.srt")
             llm_config = config_payload.get("llm_settings", {})
@@ -543,19 +632,16 @@ async def run_pipeline_task(task_id: str, config_payload: dict):
             await manager.send_json({"status": "processing", "step": "translating", "message": "正在请求大模型翻译..."}, task_id)
             await loop.run_in_executor(None, run_llm_translation, input_srt, output_translated, llm_config, translate_progress_callback)
 
-        # 全局完成
-        await manager.send_json({"status": "completed", "step": "done", "message": "工作流执行完毕！"}, task_id)
-        
-    except Exception as e:
-        print(f"[错误] 工作流任务异常: {e}")
-        await manager.send_json({"status": "error", "message": str(e)}, task_id)
-    finally:
-        # 注意：取消了自动删除源文件和临时音频的逻辑。它们将驻留在任务空间中，支持分步重试。
-        active_tasks_count -= 1
-        if active_tasks_count <= 0:
-            active_tasks_count = 0
-            idle_timer_task = asyncio.create_task(auto_unload_timer())
+            if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
+            await manager.send_json({"status": "completed", "step": "done", "message": "全量任务流水线完美收官！"}, task_id)
+
+        except Exception as e:
+            print(f"[翻译车间错误] {e}")
+            if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
+            await manager.send_json({"status": "error", "message": f"智能翻译失败: {str(e)}"}, task_id)
+        finally:
+            q_translate.task_done()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False, log_level="warning")

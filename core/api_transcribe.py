@@ -7,19 +7,16 @@ import tempfile
 from openai import OpenAI
 
 try:
-    from pydub import AudioSegment
     import platform
     import shutil
     
-    # 动态指定 pydub 的 ffmpeg 路径，优先本地，其次系统全局
+    # 将本地 ffmpeg 路径临时加入环境变量，避免 pydub 导入时找不到 ffmpeg 报 RuntimeWarning
     system = platform.system()
-    local_ffmpeg = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffmpeg.exe" if system == "Windows" else "ffmpeg")
-    if os.path.exists(local_ffmpeg):
-        AudioSegment.converter = local_ffmpeg
-    else:
-        global_ffmpeg = shutil.which("ffmpeg")
-        if global_ffmpeg:
-            AudioSegment.converter = global_ffmpeg
+    local_ffmpeg_dir = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin")
+    if os.path.exists(local_ffmpeg_dir) and local_ffmpeg_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = local_ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+        
+    from pydub import AudioSegment
 except ImportError:
     AudioSegment = None
 

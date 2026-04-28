@@ -1,6 +1,6 @@
 const { ref, onMounted, watch } = Vue;
 import { store, addLog } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, updateConfig } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, updateConfig, executeTask } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -17,6 +17,7 @@ export default {
             <el-upload
                 class="compact-upload"
                 drag
+                multiple
                 action="#"
                 :auto-upload="true"
                 :http-request="handleUpload"
@@ -32,33 +33,44 @@ export default {
             
             <!-- 上传进度条 -->
             <div v-if="isUploading" style="margin-top: 20px;">
-                <el-progress :percentage="uploadPercent" :stroke-width="18" text-inside></el-progress>
+                <el-progress :percentage="currentUploadProgress" :stroke-width="18" text-inside></el-progress>
                 <div style="text-align: center; margin-top: 8px; font-size: 13px; color: #909399;">
-                    正在上传并初始化任务，请勿刷新页面...
+                    <el-icon class="is-loading" style="margin-right: 5px;"><Loading /></el-icon>
+                    正在上传: <strong>{{ currentUploadName }}</strong> (队列排队: {{ queueRemaining }} 个)...
                 </div>
-            </div>
-
-            <!-- 成功提示展示区 -->
-            <div v-if="currentFileName && !isUploading" style="margin-top: 20px; padding: 15px; background-color: #f0f9eb; border-radius: 4px; color: #67C23A; text-align: center; border: 1px solid #e1f3d8;">
-                <el-icon style="vertical-align: middle; margin-right: 5px; font-size: 18px;"><CircleCheck /></el-icon>
-                源文件 <strong>{{ currentFileName }}</strong> 已就绪
             </div>
             </el-card>
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
-                <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
-                    <el-collapse-item name="1">
-                        <template #title>
-                            <span class="card-title">🕰️ 历史任务记录</span>
-                        </template>
-                <el-table :data="taskList" style="width: 100%" height="280" v-loading="isLoadingTasks" :empty-text="'暂无历史任务'">
+                <template #header>
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span class="card-title">🚥 流水线看板与资产库</span>
+                        <div style="display: flex; gap: 10px;">
+                            <el-button type="danger" size="small" plain :disabled="taskList.length === 0" @click="clearAllTasks">
+                                <el-icon><Delete /></el-icon> 一键清空
+                            </el-button>
+                            <el-button type="success" size="small" plain :disabled="selectedTasks.length === 0" @click="batchRun(false)">
+                                批量提取+识别
+                            </el-button>
+                            <el-button type="primary" size="small" :disabled="selectedTasks.length === 0" @click="batchRun(true)">
+                                批量全量(含翻译)
+                            </el-button>
+                        </div>
+                    </div>
+                </template>
+                
+                <el-table :data="taskList" style="width: 100%" height="320" v-loading="isLoadingTasks" :empty-text="'暂无任务记录'" @selection-change="handleSelectionChange">
+                    <el-table-column type="selection" width="50"></el-table-column>
                     <el-table-column prop="base_name" label="任务名称 (源文件名)" min-width="180" show-overflow-tooltip></el-table-column>
-                    <el-table-column label="创建时间" width="160">
+                    <el-table-column label="实时状态" width="130">
                         <template #default="scope">
-                            {{ new Date(scope.row.created_at * 1000).toLocaleString() }}
+                            <el-tag v-if="store.pipelineStatus[scope.row.task_id]" size="small" :type="getStatusType(store.pipelineStatus[scope.row.task_id].current_step)" effect="dark">
+                                {{ getStatusText(store.pipelineStatus[scope.row.task_id].current_step) }}
+                            </el-tag>
+                            <el-tag v-else size="small" type="info">已空闲</el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="资产状态" width="220">
+                    <el-table-column label="资产检查" width="200">
                         <template #default="scope">
                             <el-tag size="small" :type="scope.row.has_video ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">视频</el-tag>
                             <el-tag size="small" :type="scope.row.has_audio ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">音频</el-tag>
@@ -66,15 +78,13 @@ export default {
                             <el-tag size="small" :type="scope.row.has_translated_srt ? 'success' : 'info'" effect="plain">翻译</el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="160" fixed="right">
+                    <el-table-column label="焦点操作" width="160" fixed="right">
                         <template #default="scope">
-                            <el-button size="small" type="primary" plain @click="loadTask(scope.row)" :disabled="store.taskId === scope.row.task_id">加载</el-button>
+                            <el-button size="small" type="primary" plain @click="loadTask(scope.row)" :disabled="store.taskId === scope.row.task_id">监视</el-button>
                             <el-button size="small" type="danger" plain @click="removeTask(scope.row)">删除</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
-                    </el-collapse-item>
-                </el-collapse>
             </el-card>
 
             <!-- 全局网络代理设置 (单行紧凑布局) -->
@@ -107,11 +117,12 @@ export default {
     `,
     setup() {
         const isUploading = ref(false);
-        const uploadPercent = ref(0);
-        const currentFileName = ref("");
+        const currentUploadProgress = ref(0);
+        const currentUploadName = ref("");
+        const queueRemaining = ref(0);
         const taskList = ref([]);
+        const selectedTasks = ref([]);
         const isLoadingTasks = ref(false);
-        const activeCollapse = ref([]); // 默认折叠状态
         
         // 代理 UI 状态变量
         const proxyEnabled = ref(false);
@@ -171,6 +182,27 @@ export default {
             fetchTasks();
         });
 
+        const handleSelectionChange = (val) => { selectedTasks.value = val; };
+
+        const getStatusType = (step) => {
+            const map = {
+                'pending_extract': 'info', 'extracting': 'warning',
+                'pending_transcribe': 'info', 'transcribing': 'warning',
+                'pending_translate': 'info', 'translating': 'warning',
+                'completed': 'success', 'error': 'danger'
+            };
+            return map[step] || 'info';
+        };
+        const getStatusText = (step) => {
+            const map = {
+                'pending_extract': '排队提音中', 'extracting': '▶ 正在提音',
+                'pending_transcribe': '排队识别中', 'transcribing': '▶ 正在识别',
+                'pending_translate': '排队翻译中', 'translating': '▶ 正在翻译',
+                'completed': '✔ 完毕收工', 'error': '✖ 发生错误'
+            };
+            return map[step] || step;
+        };
+
         const handleProxyChange = async () => {
             // 1. 如果用户关闭了开关，则安全置空并发送给后端
             if (!proxyEnabled.value) {
@@ -202,40 +234,78 @@ export default {
             }
         };
 
-        const handleUpload = async (options) => {
-            addLog(`开始上传源文件: ${options.file.name}...`, "info");
+        // 多文件批量串行上传队列
+        const uploadQueue = [];
+        let isProcessingQueue = false;
+        
+        const processUploadQueue = async () => {
+            if (isProcessingQueue || uploadQueue.length === 0) return;
+            isProcessingQueue = true;
             isUploading.value = true;
-            uploadPercent.value = 0;
-            
-            try {
-                // 传入 null 作为 taskId，让后端生成全新任务。资产类型默认按 video 处理（后端会根据后缀保存）
-                const res = await uploadAsset(options.file, 'video', null, (percent) => {
-                    uploadPercent.value = percent;
-                });
+
+            while (uploadQueue.length > 0) {
+                const options = uploadQueue.shift();
+                queueRemaining.value = uploadQueue.length;
+                currentUploadName.value = options.file.name;
+                currentUploadProgress.value = 0;
+                addLog(`开始上传源文件: ${options.file.name} (队列剩余: ${uploadQueue.length} 个)...`, "info");
                 
-                // --- 核心：更新全局状态，点亮其他组件 ---
-                store.taskId = res.task_id;
-                store.activeStep = 1; // 进度条跳到第2步：资产就绪
-                
-                // 重置并点亮资产状态
-                store.assets = {
-                    hasVideo: true,
-                    hasAudio: false,
-                    hasOriginalSrt: false,
-                    hasTranslatedSrt: false
-                };
-                
-                currentFileName.value = options.file.name;
-                addLog(`✅ 上传成功！任务分配 ID: ${res.task_id}`, "success");
-                ElementPlus.ElMessage.success("上传成功，任务工作区已就绪！");
-                
-                fetchTasks(); // 上传完成后刷新历史列表
-            } catch (e) {
-                addLog(`❌ 上传失败: ${e.message}`, "error");
-                ElementPlus.ElMessage.error(`上传失败: ${e.message}`);
-            } finally {
-                isUploading.value = false;
+                try {
+                    // 智能判断上传的是视频还是纯音频，并调用后端 API
+                    const assetType = options.file.type.startsWith('audio') ? 'audio' : 'video';
+                    const res = await uploadAsset(options.file, assetType, null, (percent) => {
+                        currentUploadProgress.value = percent;
+                    });
+                    addLog(`✅ 上传成功！任务分配 ID: ${res.task_id}`, "success");
+                } catch (e) {
+                    addLog(`❌ 上传失败 [${options.file.name}]: ${e.message}`, "error");
+                } finally {
+                    // 每当有一个文件物理上传完毕，立刻刷新一次看板，实现“边传边显示”的效果
+                    fetchTasks();
+                }
             }
+
+            isProcessingQueue = false;
+            isUploading.value = false;
+            ElementPlus.ElMessage.success("批量上传分配完成，请在列表中勾选任务下发执行！");
+        };
+        
+        let uploadDebounceTimer = null;
+        const handleUpload = (options) => {
+            // 拦截默认的并发上传，将文件加入排队数组
+            uploadQueue.push(options);
+            // 巧用防抖(Debounce)：等待 Element Plus 把同一批拖入的文件全部塞进队列后，再统一唤醒消费者
+            if (uploadDebounceTimer) clearTimeout(uploadDebounceTimer);
+            uploadDebounceTimer = setTimeout(() => {
+                processUploadQueue();
+            }, 100);
+        };
+
+        // 批量将任务下发到后端 Worker 车间
+        const batchRun = async (includeTranslation) => {
+            if (selectedTasks.value.length === 0) return;
+            
+            if (includeTranslation && !store.config.llm_settings.api_key) {
+                ElementPlus.ElMessage.warning("执行全量流水线前，请先在【LLM 翻译】页填写 API Key！");
+                return;
+            }
+
+            for (const task of selectedTasks.value) {
+                const steps = [];
+                if (!task.has_audio && task.has_video) steps.push("extract");
+                if (!task.has_original_srt && (task.has_audio || steps.includes("extract"))) steps.push("transcribe");
+                if (includeTranslation) steps.push("translate");
+
+                if (steps.length > 0) {
+                    try {
+                        await executeTask(task.task_id, steps, store.config);
+                        addLog(`🚀 任务 ${task.base_name} 已加入调度车间`, "success");
+                    } catch (e) {
+                        addLog(`❌ 任务 ${task.base_name} 调度失败: ${e.message}`, "error");
+                    }
+                }
+            }
+            ElementPlus.ElMessage.success("批量分配完成，请在看板中观察流转进度！");
         };
 
         const loadTask = (task) => {
@@ -246,8 +316,14 @@ export default {
                 hasOriginalSrt: task.has_original_srt,
                 hasTranslatedSrt: task.has_translated_srt
             };
-            currentFileName.value = task.base_name;
             
+            // 清空旧日志，迎接焦点任务的新日志
+            store.logs.splice(0, store.logs.length);
+            addLog(`👀 焦点已切换至监视任务: ${task.base_name}`, "info");
+            
+            // 切断并重新连接 WS，绑定到新任务的输出流
+            connectTaskMonitor(task.task_id, null, null);
+
             // 智能推导进度条应该亮到哪一步
             if (task.has_translated_srt) store.activeStep = 5;
             else if (task.has_original_srt) store.activeStep = 4;
@@ -272,21 +348,55 @@ export default {
             } catch (e) { if(e !== 'cancel') ElementPlus.ElMessage.error(e.message || "删除失败"); }
         };
 
+        const clearAllTasks = async () => {
+            if (taskList.value.length === 0) return;
+            try {
+                await ElementPlus.ElMessageBox.confirm('确定要清空所有历史任务及其产生的物理文件吗？此操作将腾出大量磁盘空间且不可逆。', '高危预警', { 
+                    confirmButtonText: '全部清空', 
+                    cancelButtonText: '取消', 
+                    type: 'error' 
+                });
+                
+                isLoadingTasks.value = true;
+                let successCount = 0;
+                // 高并发发出删除请求
+                await Promise.all(taskList.value.map(async (task) => {
+                    try {
+                        await deleteTask(task.task_id);
+                        successCount++;
+                    } catch (e) {}
+                }));
+                
+                store.taskId = null;
+                store.activeStep = 0;
+                store.assets = { hasVideo: false, hasAudio: false, hasOriginalSrt: false, hasTranslatedSrt: false };
+                
+                ElementPlus.ElMessage.success(`清理完成！已释放 ${successCount} 个任务的磁盘空间。`);
+                fetchTasks();
+            } catch (e) { /* 用户点击取消 */ }
+        };
+
         return {
             isUploading,
-            uploadPercent,
-            currentFileName,
+            currentUploadProgress,
+            currentUploadName,
+            queueRemaining,
             taskList,
+            selectedTasks,
             isLoadingTasks,
-            activeCollapse,
             proxyEnabled,
             proxyProtocol,
             proxyHost,
             proxyPort,
             handleProxyChange,
+            handleSelectionChange,
             handleUpload,
             loadTask,
             removeTask,
+            clearAllTasks,
+            batchRun,
+            getStatusType,
+            getStatusText,
             store
         };
     }

@@ -23,20 +23,28 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
         if not ffmpeg_cmd:
             raise FileNotFoundError("未找到 FFmpeg！请确保项目路径下存在 bin/ffmpeg 文件夹，或已在系统中安装 FFmpeg。")
 
+    # 增加 CREATE_NO_WINDOW 避免 Windows 下多个 FFmpeg 并发抢占控制台引发报错
+    creation_flags = 0
+    if system == "Windows":
+        creation_flags = subprocess.CREATE_NO_WINDOW
+        
     command = [
         ffmpeg_cmd,
         "-y",
+        "-err_detect", "ignore_err",
+        "-ignore_unknown",
+        "-fflags", "+discardcorrupt",
         "-i", video_path
     ]
 
     if ffmpeg_settings:
+        if ffmpeg_settings.get("audio_track"):
+            command.extend(["-map", str(ffmpeg_settings["audio_track"])])
         if ffmpeg_settings.get("start_time"):
             command.extend(["-ss", str(ffmpeg_settings["start_time"])])
         if ffmpeg_settings.get("end_time"):
             command.extend(["-to", str(ffmpeg_settings["end_time"])])
-        if ffmpeg_settings.get("audio_track"):
-            command.extend(["-map", str(ffmpeg_settings["audio_track"])])
-
+            
     command.extend([
         "-vn",
         "-acodec", "pcm_s16le",
@@ -44,17 +52,39 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
         "-ac", "1",
         output_audio_path
     ])
-    
+        
     print(f"[*] 正在提取音频至临时文件: {output_audio_path}")
     
     # 使用 Popen 进行流式读取
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, universal_newlines=True)
+    # 增加 stdin=subprocess.DEVNULL 防止 Windows 后台线程报错 -22 (4294967274)
+    # 增加 errors='ignore' 防止控制台输出乱码导致 Python 崩溃
+    process = subprocess.Popen(
+        command, 
+        stdout=subprocess.PIPE, 
+        stderr=subprocess.PIPE, 
+        stdin=subprocess.DEVNULL,
+        text=True, 
+        errors='ignore',
+        creationflags=creation_flags
+    )
     
     # 预编译正则，用于匹配 FFmpeg 日志中的 time=HH:MM:SS.xx
     time_pattern = re.compile(r"time=(\d{2}:\d{2}:\d{2})\.\d+")
+    error_log = []
+    muxing_completed = False
     
     # 逐行读取 stderr (FFmpeg 的日志默认输出在 stderr)
     for line in process.stderr:
+        line_str = line.strip()
+        if line_str:
+            # 保留最后 5 行有效日志，用于报错提示
+            error_log.append(line_str)
+            if len(error_log) > 5:
+                error_log.pop(0)
+                
+            if "muxing overhead:" in line_str:
+                muxing_completed = True
+                
         match = time_pattern.search(line)
         if match and progress_callback:
             # 提取出 HH:MM:SS 并回调
@@ -63,6 +93,11 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
     process.wait()
     
     if process.returncode != 0:
-        raise RuntimeError(f"FFmpeg 提取音频失败，返回码 {process.returncode}")
+        # 如果 FFmpeg 输出了完整的 muxing summary，说明即使遇到损坏帧，文件也已经完整生成，应当放行
+        if muxing_completed and os.path.exists(output_audio_path):
+            print(f"[⚠️ 警告] FFmpeg 提取遇到损坏的音频帧 (代码 {process.returncode})，但已成功完成提取，自动放行...")
+        else:
+            err_msg = " | ".join(error_log) if error_log else "未知原因"
+            raise RuntimeError(f"FFmpeg 提取失败 (代码 {process.returncode})，详情: {err_msg}")
     
     return output_audio_path

@@ -1,6 +1,6 @@
 const { ref, computed } = Vue;
-import { store, addLog } from '../store.js';
-import { executeTask, WS_BASE, uploadAsset, getLlmModels } from '../api.js';
+import { store, addLog, connectTaskMonitor } from '../store.js';
+import { executeTask, uploadAsset, getLlmModels } from '../api.js';
 
 export default {
     name: 'TabLLM',
@@ -205,40 +205,22 @@ export default {
             store.activeStep = 4; // 进度条更新：正在翻译
             addLog("▶️ 启动大模型智能翻译流...", "info");
 
-            const ws = new WebSocket(`${WS_BASE}/ws/progress/${store.taskId}`);
-            ws.onopen = () => addLog("已连接到后端，等待大模型响应...", "success");
-            ws.onerror = () => { addLog("WebSocket 连接异常！", "error"); store.isProcessing = false; };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.status === "processing") {
-                    if (data.message) {
-                        // 简单判断日志情绪，渲染不同的颜色
-                        if (data.message.includes("❌")) addLog(data.message, "error");
-                        else if (data.message.includes("⚠️")) addLog(data.message, "warning");
-                        else addLog(data.message, "info");
-                    }
-                } else if (data.status === "completed") {
-                    store.isProcessing = false;
+            connectTaskMonitor(
+                store.taskId,
+                () => {
                     store.assets.hasTranslatedSrt = true;
                     store.activeStep = 5; // 整个流水线全部完成！
                     addLog("🎉 智能翻译全部完成！", "success");
                     ElementPlus.ElMessage.success("翻译成功！请点击右上角下载熟肉字幕。");
-                    ws.close();
-                } else if (data.status === "error") {
-                    store.isProcessing = false;
-                    addLog(`❌ 发生错误: ${data.message}`, "error");
-                    ElementPlus.ElMessage.error(`翻译失败: ${data.message}`);
-                    ws.close();
-                }
-            };
+                },
+                () => {}
+            );
 
             try {
                 await executeTask(store.taskId, ["translate"], store.config);
             } catch (e) {
                 addLog(`请求启动翻译失败: ${e.message}`, "error");
                 store.isProcessing = false;
-                ws.close();
             }
         };
 

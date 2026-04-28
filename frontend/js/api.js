@@ -98,3 +98,6 @@ export const deleteTask = async (taskId) => {
     if (!res.ok) throw new Error("删除任务失败");
     return await res.json();
 };
+
+export const getTaskStatus = (taskId) => fetchGet(`/api/task/${taskId}/status`);
+export const getPipelineStatus = () => fetchGet(`/api/pipeline/status`);

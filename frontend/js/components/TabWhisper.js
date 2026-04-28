@@ -1,6 +1,6 @@
 const { ref, computed, watch } = Vue;
-import { store, addLog } from '../store.js';
-import { executeTask, WS_BASE, getAsrModels } from '../api.js';
+import { store, addLog, connectTaskMonitor } from '../store.js';
+import { executeTask, getAsrModels } from '../api.js';
 
 export default {
     name: 'TabWhisper',
@@ -396,10 +396,10 @@ export default {
             </div>
             
             <!-- 模型下载进度提示 -->
-            <div v-if="downloadedMB !== null && store.isProcessing" style="margin-top: 15px;">
+            <div v-if="store.taskState.downloadedMB !== null && store.isProcessing && store.activeStep === 3" style="margin-top: 15px;">
                 <div style="display: inline-flex; justify-content: center; align-items: center; padding: 10px 15px; background-color: #ecf5ff; color: #409EFF; border-radius: 4px; font-size: 14px;">
                     <el-icon class="is-loading" style="margin-right: 8px; font-size: 18px;"><Loading /></el-icon>
-                    <span>首次加载较慢，正在读取或下载模型... (已下载: {{ downloadedMB }} MB)</span>
+                    <span>首次加载较慢，正在读取或下载模型... (已下载: {{ store.taskState.downloadedMB }} MB)</span>
                 </div>
             </div>
         </div>
@@ -417,7 +417,6 @@ export default {
             max_new_tokens: store.config.transcribe_settings.max_new_tokens ?? "",
             chunk_length: store.config.transcribe_settings.chunk_length ?? ""
         });
-        const downloadedMB = ref(null);
         const activeApiCollapse = ref([]); // 云端 API 高级面板默认折叠
 
         // 实时同步本地临时状态到全局 config (适配一键全量工作流)
@@ -468,54 +467,32 @@ export default {
 
             store.isProcessing = true;
             store.activeStep = 3; // 进度条跳到原声识别
-            downloadedMB.value = null;
+            store.taskState.downloadedMB = null;
             const engineName = store.config.transcribe_settings.engine === 'api' ? "云端 API" : "本地 Whisper";
             addLog(`▶️ 启动 ${engineName} 识别引擎...`, "info");
 
-            const ws = new WebSocket(`${WS_BASE}/ws/progress/${store.taskId}`);
-            ws.onopen = () => addLog("等待模型分配资源...", "success");
-            ws.onerror = () => { addLog("WebSocket 连接异常！", "error"); store.isProcessing = false; };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.status === "processing") {
-                    if (data.step === "downloading") {
-                        if (data.downloaded_mb !== undefined) downloadedMB.value = data.downloaded_mb;
-                    } else if (data.step === "transcribing") {
-                        downloadedMB.value = null; // 隐藏下载进度
-                        if (data.progress) {
-                            addLog(`[${data.progress}] ${data.text}`, "progress");
-                        } else if (data.message) {
-                            addLog(data.message, "info");
-                        }
-                    }
-                } else if (data.status === "completed") {
-                    store.isProcessing = false;
+            connectTaskMonitor(
+                store.taskId,
+                () => {
                     store.assets.hasOriginalSrt = true;
                     store.activeStep = 4; // 进入 LLM 翻译待命状态
                     addLog("🎉 原声字幕提取完毕！", "success");
                     ElementPlus.ElMessage.success("识别成功！已生成 SRT 原生字幕。");
-                    ws.close();
-                } else if (data.status === "error") {
-                    store.isProcessing = false;
-                    addLog(`❌ 发生错误: ${data.message}`, "error");
-                    ElementPlus.ElMessage.error(`识别失败: ${data.message}`);
-                    ws.close();
-                }
-            };
+                },
+                () => {}
+            );
 
             try {
                 await executeTask(store.taskId, ["transcribe"], store.config);
             } catch (e) {
                 addLog(`请求启动任务失败: ${e.message}`, "error");
                 store.isProcessing = false;
-                ws.close();
             }
         };
 
         return { 
             store, pinnedLanguages, otherLanguages, 
-            suppressTokensStr, nullableFields, downloadedMB,
+            suppressTokensStr, nullableFields,
             addTemperature, removeTemperature, runTranscribe,
             isFetchingAsrModels, refreshAsrModels, activeApiCollapse
         };

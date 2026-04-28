@@ -1,4 +1,5 @@
 const { reactive } = Vue;
+import { WS_BASE } from './api.js';
 
 /* 全局状态管理 (轻量级 Pinia 替代) */
 export const store = reactive({
@@ -7,12 +8,21 @@ export const store = reactive({
     activeStep: 0,
     isProcessing: false,
     
+    // --- 全局流水线状态 (存储所有正在车间跑的任务) ---
+    pipelineStatus: {},
+    
     // --- 资产就绪状态 (用于控制各 Tab 的按钮是否可用) ---
     assets: {
         hasVideo: false,
         hasAudio: false,
         hasOriginalSrt: false,
         hasTranslatedSrt: false
+    },
+
+    // --- 跨组件的细粒度状态 (用于断线恢复) ---
+    taskState: {
+        extractedTime: "",
+        downloadedMB: null
     },
 
     // --- 全局日志系统 ---
@@ -49,4 +59,61 @@ export const store = reactive({
 export const addLog = (message, type = "info") => {
     const time = new Date().toLocaleTimeString();
     store.logs.push({ time, message, type });
+};
+
+// --- 通用 WebSocket 监视器 (支持复用与状态路由) ---
+let currentWs = null;
+export const connectTaskMonitor = (taskId, onSuccess, onError) => {
+    if (currentWs) {
+        currentWs.close();
+    }
+    
+    const ws = new WebSocket(`${WS_BASE}/ws/progress/${taskId}`);
+    currentWs = ws;
+
+    ws.onopen = () => addLog("🔗 已成功连接到后端实时监视器...", "success");
+    ws.onerror = () => { 
+        addLog("❌ WebSocket 连接异常或中断！", "error"); 
+        store.isProcessing = false; 
+        if (onError) onError(new Error("WS_ERROR"));
+    };
+    
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.status === "processing") {
+            // 1. 路由全局进度条
+            if (data.step === "extract_audio") store.activeStep = 2;
+            else if (data.step === "downloading" || data.step === "transcribing") store.activeStep = 3;
+            else if (data.step === "translating") store.activeStep = 4;
+
+            // 2. 路由 Tab 专属特有状态
+            if (data.extracted_time) store.taskState.extractedTime = data.extracted_time;
+            if (data.step === "downloading" && data.downloaded_mb !== undefined) {
+                store.taskState.downloadedMB = data.downloaded_mb;
+            } else if (data.step === "transcribing") {
+                store.taskState.downloadedMB = null;
+            }
+
+            // 3. 路由日志打印
+            if (data.progress) {
+                addLog(`[${data.progress}] ${data.text}`, "progress");
+            } else if (data.message) {
+                if (data.message.includes("❌")) addLog(data.message, "error");
+                else if (data.message.includes("⚠️")) addLog(data.message, "warning");
+                else addLog(data.message, "info");
+            }
+        } else if (data.status === "completed") {
+            store.isProcessing = false;
+            if (onSuccess) onSuccess(data);
+            ws.close();
+            currentWs = null;
+        } else if (data.status === "error") {
+            store.isProcessing = false;
+            addLog(`❌ 发生错误: ${data.message}`, "error");
+            if (onError) onError(new Error(data.message));
+            ws.close();
+            currentWs = null;
+        }
+    };
+    return ws;
 };
