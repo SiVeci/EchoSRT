@@ -25,7 +25,7 @@
 
 ## 使用方法
 
-### 🐳 方式一：Docker 部署 (NAS / 服务器首选)
+### 🐳 方式一：Docker 部署
 
 我们通过 GitHub Actions 提供了全自动构建的官方预编译镜像（托管于 GHCR），支持纯 CPU 与 NVIDIA GPU 硬件加速。**强烈推荐直接拉取预编译镜像**，以避免本地由于网络波动或环境问题导致的构建失败。
 
@@ -41,7 +41,7 @@ docker-compose up -d echosrt-gpu
 ```
 启动后，浏览器访问 `http://127.0.0.1:8000` 即可进入工作台。
 
-🛠️ 备选：本地自行构建 +如果你想修改源码进行二次开发或定制 Docker 环境，请打开 docker-compose.yml，注释掉 image: 配置行并取消 build: 块的注释。然后执行 docker-compose up -d --build 让本机进行从头编译。 + 启动后，浏览器访问 http://127.0.0.1:8000 即可进入工作台。
+🛠️ 备选：本地自行构建 +如果你想修改源码进行二次开发或定制 Docker 环境，请打开 docker-compose.yml，注释掉 image: 配置行并取消 build: 块的注释。然后执行 docker-compose up -d --build 让本机进行从头编译。 + 启动后，浏览器访问 http://[IP]:8000 即可进入工作台。
 
 ### 🐍 方式二：本地 Python 源码部署 (极客/开发者)
 
