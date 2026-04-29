@@ -39,9 +39,9 @@ docker-compose up -d echosrt-cpu
 # 启动满血 GPU 版 (需物理机配有 Nvidia 显卡并安装了 Container Toolkit)
 docker-compose up -d echosrt-gpu
 ```
-启动后，浏览器访问 `http://127.0.0.1:8000` 即可进入工作台。
+启动后，浏览器访问 `http://[IP]:8000` 即可进入工作台。
 
-🛠️ 备选：本地自行构建 +如果你想修改源码进行二次开发或定制 Docker 环境，请打开 docker-compose.yml，注释掉 image: 配置行并取消 build: 块的注释。然后执行 docker-compose up -d --build 让本机进行从头编译。 + 启动后，浏览器访问 http://[IP]:8000 即可进入工作台。
+🛠️ 备选：本地自行构建 +如果你想修改源码进行二次开发或定制 Docker 环境，请打开 docker-compose.yml，注释掉 image: 配置行并取消 build: 块的注释。然后执行 docker-compose up -d --build 让本机进行从头编译。 + 启动后，浏览器访问 http://127.0.0.1:8000 即可进入工作台。
 
 ### 🐍 方式二：本地 Python 源码部署 (极客/开发者)
 
