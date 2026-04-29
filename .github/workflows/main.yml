@@ -1,0 +1,62 @@
+name: Build and Publish Docker Images
+
+# 触发条件：当你发布一个新的 Release 时，或者手动点击运行
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    # 赋予 Action 读写 GitHub Packages (GHCR) 的权限
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # GitHub 自动生成的 Token，无需手动配置
+
+      # Docker 镜像名字必须是小写，这个脚本可以自动把你的用户名转为小写防止报错
+      - name: Lowercase image name
+        run: |
+          echo "IMAGE_NAME_LOWER=$(echo ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # 1. 编译并推送 CPU 镜像
+      - name: Build and push CPU image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME_LOWER }}:cpu-latest
+            ${{ env.IMAGE_NAME_LOWER }}:cpu-${{ github.event.release.tag_name || 'dev' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 2. 编译并推送 GPU 镜像
+      - name: Build and push GPU image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.gpu
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME_LOWER }}:gpu-latest
+            ${{ env.IMAGE_NAME_LOWER }}:gpu-${{ github.event.release.tag_name || 'dev' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
