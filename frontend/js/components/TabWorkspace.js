@@ -1,6 +1,6 @@
 const { ref, onMounted, watch } = Vue;
 import { store, addLog } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, updateConfig, executeTask } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, updateConfig, executeTask, testProxy } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -288,6 +288,20 @@ export default {
             if (includeTranslation && !store.config.llm_settings.api_key) {
                 ElementPlus.ElMessage.warning("执行全量流水线前，请先在【LLM 翻译】页填写 API Key！");
                 return;
+            }
+
+            // 代理连通性前置测试拦截
+            if (proxyEnabled.value && proxyHost.value && proxyPort.value) {
+                try {
+                    const fullProxy = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
+                    addLog(`🔄 正在测试代理服务器连通性: ${fullProxy}`, "info");
+                    await testProxy(fullProxy);
+                    addLog(`✅ 代理服务器连通性测试通过`, "success");
+                } catch (e) {
+                    addLog(`❌ 代理测试失败，已终止任务调度: ${e.message}`, "error");
+                    ElementPlus.ElMessage.error(`代理服务器连接失败，请检查设置`);
+                    return; // 连通性测试不通过，直接阻断后续流水线分发
+                }
             }
 
             for (const task of selectedTasks.value) {

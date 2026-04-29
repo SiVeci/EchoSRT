@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # ========================================
+  # CPU 版本 (适合绝大多数无显卡的家用 NAS)
+  # ========================================
+  echosrt-cpu:
+    # 默认拉取 GitHub 云端预编译镜像。若需本地自行构建，请注释掉下方 image，并取消 build 的注释。
+    image: ghcr.io/siveci/echosrt:cpu-latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: echosrt-cpu
+    ports:
+      - "8000:8000"
+    environment:
+      # 在 NAS 的 SSH 终端输入 id 命令查看你的 UID 和 GID，填入下方，确保文件权限正确
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./workspace:/app/workspace
+      - ./models:/app/models
+      # (可选) 将配置挂载出来防止丢失，如果是首次运行请确保本地有 config.json 否则会挂载成目录报错
+      # - ./config.json:/app/config.json
+    restart: unless-stopped
+    # 限制 CPU 和内存使用，防止小内存 NAS 因为下载大模型导致系统卡死
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # ========================================
+  # GPU 版本 (适合 Unraid / TrueNAS / 黑群晖等直通了显卡的设备)
+  # ========================================
+  echosrt-gpu:
+    # 默认拉取 GitHub 云端预编译镜像。若需本地自行构建，请注释掉下方 image，并取消 build 的注释。
+    image: ghcr.io/siveci/echosrt:gpu-latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.gpu
+    container_name: echosrt-gpu
+    # 如果两个版本同时运行，这里把外部端口改为 8001
+    ports:
+      - "8001:8000"
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./workspace:/app/workspace
+      - ./models:/app/models
+      # - ./config.json:/app/config.json
+    restart: unless-stopped
+    # ========== 开启 NVIDIA 显卡支持 ==========
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -1,0 +1,44 @@
+# 使用 NVIDIA 官方提供的带有 CUDA 12.2 和 cuDNN 的运行时镜像作为基础
+FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+
+# 设置非交互式安装和环境变量
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+# 告诉 CTranslate2 库去哪找 CUDA/cuDNN（可选，通常 nvidia 基础镜像已配好）
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+
+# 1. 安装 Python 3.10、pip、FFmpeg 和用于权限控制的 gosu
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.10 python3-pip python3.10-venv \
+    ffmpeg gosu && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 2. 将 python 命令软连接到 python3.10，确保 pip 等脚本正常工作
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# 3. 设置工作目录
+WORKDIR /app
+
+# 4. 首先拷贝 requirements 以利用 Docker 构建缓存
+COPY requirements.txt .
+
+# 5. 安装 Python 依赖 (Faster Whisper 底层的 CTranslate2 会自动检测 CUDA)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 6. 拷贝整个项目代码到容器中
+COPY . .
+
+# 7. 转换换行符为 Unix 格式并赋予 entrypoint 脚本执行权限
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
+
+# 暴露 FastAPI 端口
+EXPOSE 8000
+
+# 8. 定义启动入口 (接管 PUID/PGID 的处理)
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# 9. 默认启动命令
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

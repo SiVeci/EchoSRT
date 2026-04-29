@@ -1,4 +1,4 @@
-# EchoSRT 🎬 v0.9.0
+# EchoSRT 🎬 v0.9.1
 
 基于 `faster-whisper` 与 `LLM大模型` 的现代化本地视频字幕自动化工作站。
 
@@ -25,6 +25,26 @@
 
 ## 使用方法
 
+### 🐳 方式一：Docker 部署 (NAS / 服务器首选)
+
+我们通过 GitHub Actions 提供了全自动构建的官方预编译镜像（托管于 GHCR），支持纯 CPU 与 NVIDIA GPU 硬件加速。**强烈推荐直接拉取预编译镜像**，以避免本地由于网络波动或环境问题导致的构建失败。
+
+**✨ 推荐：直接拉取云端预编译镜像**
+在项目根目录下直接执行以下命令，即可一键拉取成品镜像并启动服务：
+
+```bash
+# 启动轻量级 CPU 版 (适合无显卡 NAS 或纯调用云端 API 的用户)
+docker-compose up -d echosrt-cpu
+
+# 启动满血 GPU 版 (需物理机配有 Nvidia 显卡并安装了 Container Toolkit)
+docker-compose up -d echosrt-gpu
+```
+启动后，浏览器访问 `http://127.0.0.1:8000` 即可进入工作台。
+
+🛠️ 备选：本地自行构建 +如果你想修改源码进行二次开发或定制 Docker 环境，请打开 docker-compose.yml，注释掉 image: 配置行并取消 build: 块的注释。然后执行 docker-compose up -d --build 让本机进行从头编译。 + 启动后，浏览器访问 http://127.0.0.1:8000 即可进入工作台。
+
+### 🐍 方式二：本地 Python 源码部署 (极客/开发者)
+
 1. **安装运行依赖**
 建议通过项目根目录下的 `requirements.txt` 一键安装所有必备依赖（包含视频提取、语音识别以及 LLM 翻译所需的核心库）：
 ```bash
@@ -34,17 +54,16 @@ pip install -r requirements.txt
 2. **一键启动 WebUI**
    - 在项目根目录下，使用 Python 运行跨平台统一启动脚本：
      ```bash
-     python start.py
+     python app.py
      ```
-   - *注：Linux / macOS 用户若系统默认未绑定 `python` 命令，请使用 `python3 start.py`。*
 
-`start.py` 脚本会跨平台自动管理前后端进程，并在浏览器中为你自动打开 `http://127.0.0.1:8080` 的工作台。
+脚本会自动启动后端 API 及静态页面托管，浏览器访问 `http://127.0.0.1:8000` 即可进入工作台；访问 `http://127.0.0.1:8000/docs` 可查看二次开发 API 接口文档。
 
 > 💡 **保留的 CLI 命令行模式**：依然可以在终端直接运行 `python main.py` 在命令行提取字幕（首次运行会自动初始化配置文件）。
 
 ## TODO
 
-- [ ] **Docker 容器化部署**：提供 Docker 镜像封装，方便在 NAS 或云服务器上一键运行部署。
+- [x] **Docker 容器化部署**：提供 Docker 镜像封装，包含轻量级 CPU 版及 Nvidia CUDA 满血版。
 - [ ] **分流代理控制**：云端识别API和LLM 翻译API可独立选择是否使用全局代理，实现接入不同地区云端模型时分流代理。
 - [x] **任务队列功能**：全面实现多文件批量排队上传，并在后台无头流水线中按顺序自动并发执行。
 - [x] **HTTP 代理支持**：配置本地代理以加速 Hugging Face 大模型的下载及访问在线模型API。

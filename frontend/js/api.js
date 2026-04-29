@@ -1,6 +1,6 @@
 /* 封装所有的后端 API 请求与 WebSocket 连接逻辑 */
-export const API_BASE = "http://127.0.0.1:8000";
-export const WS_BASE = "ws://127.0.0.1:8000";
+export const API_BASE = window.location.origin;
+export const WS_BASE = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 
 // --- 通用 GET 请求 ---
 async function fetchGet(endpoint) {
@@ -25,6 +25,21 @@ export const restoreConfig = async () => {
     if (!res.ok) throw new Error("恢复配置失败");
     return await res.json();
 };
+
+export const testProxy = async (proxyUrl) => {
+    const res = await fetch(`${API_BASE}/api/proxy/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxy_url: proxyUrl })
+    });
+    if (!res.ok) {
+        let errMsg = "代理连通性测试失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
 export const getLanguages = () => fetchGet('/api/languages');
 export const getModels = () => fetchGet('/api/models');
 

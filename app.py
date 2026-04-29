@@ -5,9 +5,11 @@ import asyncio
 import shutil
 import urllib.request
 import urllib.error
+import logging
 from typing import Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -49,6 +51,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(worker_transcribe_loop())
     asyncio.create_task(worker_translate_loop())
     yield
+
+class EndpointFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage().find("/api/pipeline/status") == -1
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 app = FastAPI(title="EchoSRT Web API", lifespan=lifespan)
 
@@ -179,6 +187,34 @@ async def update_config(payload: dict = Body(...)):
         return {"message": "配置已保存并生效"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
+
+@app.post("/api/proxy/test")
+async def test_proxy(payload: dict = Body(...)):
+    """测试 HTTP/SOCKS5 代理服务器的端口连通性"""
+    import urllib.parse
+    import socket
+    proxy_url = payload.get("proxy_url", "").strip()
+    if not proxy_url:
+        return {"status": "ok", "message": "未配置代理"}
+        
+    try:
+        if "://" not in proxy_url:
+            proxy_url = f"http://{proxy_url}"
+            
+        parsed = urllib.parse.urlparse(proxy_url)
+        host = parsed.hostname
+        port = parsed.port
+        
+        if not host or not port:
+            raise ValueError("代理地址或端口格式无效")
+            
+        # 建立一个 TCP socket 测试连接
+        with socket.create_connection((host, port), timeout=3.0):
+            pass
+            
+        return {"status": "ok", "message": "代理服务器连接成功"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"代理服务器连接失败，请检查配置。({str(e)})")
 
 @app.get("/api/languages")
 async def get_languages():
@@ -317,6 +353,28 @@ async def execute_task(payload: dict = Body(...)):
     steps = payload.get("steps", [])
     if not steps:
         raise HTTPException(status_code=400, detail="未指定执行步骤")
+
+    # ==========================================
+    # 在下发任务前，前置校验代理服务器连通性（防呆拦截）
+    # ==========================================
+    proxy_url = payload.get("system_settings", {}).get("network_proxy", "").strip()
+    if proxy_url:
+        import urllib.parse
+        import socket
+        try:
+            test_url = proxy_url if "://" in proxy_url else f"http://{proxy_url}"
+            parsed = urllib.parse.urlparse(test_url)
+            host = parsed.hostname
+            port = parsed.port
+            if not host or not port:
+                raise ValueError("地址或端口为空")
+            
+            with socket.create_connection((host, port), timeout=3.0):
+                pass
+        except Exception as e:
+            err_msg = f"连接配置的代理服务器 ({host}:{port}) 失败，请检查或关闭代理开关。({str(e)})"
+            print(f"[错误] {err_msg}")
+            raise HTTPException(status_code=400, detail=err_msg)
 
     # 将前端传来的新参数保存回 config.json
     config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
@@ -641,6 +699,9 @@ async def worker_translate_loop():
             await manager.send_json({"status": "error", "message": f"智能翻译失败: {str(e)}"}, task_id)
         finally:
             q_translate.task_done()
+
+# 挂载前端静态文件 (必须放在所有 API 路由的最下方，作为兜底路由)
+app.mount("/", StaticFiles(directory=os.path.join(os.getcwd(), "frontend"), html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn
