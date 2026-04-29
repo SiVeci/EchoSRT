@@ -2,8 +2,6 @@ name: Build and Publish Docker Images
 
 # 触发条件：当你发布一个新的 Release 时，或者手动点击运行
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 env:
