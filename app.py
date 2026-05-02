@@ -20,7 +20,6 @@ from core.translate import run_llm_translation
 from core.api_transcribe import run_api_transcription
 from faster_whisper import available_models
 
-# Whisper 支持的 99 种语言映射表
 SUPPORTED_LANGUAGES = {
     "af": "afrikaans", "am": "amharic", "ar": "arabic", "as": "assamese", "az": "azerbaijani", 
     "ba": "bashkir", "be": "belarusian", "bg": "bulgarian", "bn": "bengali", "bo": "tibetan", 
@@ -46,7 +45,6 @@ SUPPORTED_LANGUAGES = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动流水线车间的三大常驻 Worker 协程"""
     asyncio.create_task(worker_extract_loop())
     asyncio.create_task(worker_transcribe_loop())
     asyncio.create_task(worker_translate_loop())
@@ -60,21 +58,18 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 app = FastAPI(title="EchoSRT Web API", lifespan=lifespan)
 
-# 配置 CORS，允许前端跨域请求
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境中建议替换为前端的具体地址
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 统一的工作区目录，存放上传的视频、临时音频和生成的字幕
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
 def set_global_proxy(proxy_url: str):
-    """动态配置系统代理与防呆纠正"""
     proxy = proxy_url.strip() if proxy_url else ""
     if proxy:
         if proxy.startswith("socks5://"):
@@ -92,23 +87,16 @@ def set_global_proxy(proxy_url: str):
         for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"]:
             os.environ.pop(k, None)
 
-# 启动时自动读取并应用代理
 try:
     if os.path.exists("config.json"):
         with open("config.json", "r", encoding="utf-8") as f:
             set_global_proxy(json.load(f).get("system_settings", {}).get("network_proxy", ""))
 except Exception: pass
 
-# ==========================================
-# WebSocket 连接管理器
-# ==========================================
 class ConnectionManager:
     def __init__(self):
-        # 存放 task_id 对应的 WebSocket 连接
         self.active_connections: Dict[str, WebSocket] = {}
-        # 为每个 WebSocket 添加一个异步锁，防止并发发送数据导致底层协议崩溃
         self.locks: Dict[str, asyncio.Lock] = {}
-        # 缓存每个任务的最后一次状态推送，用于前端刷新后恢复进度
         self.task_states: Dict[str, dict] = {}
 
     async def connect(self, websocket: WebSocket, task_id: str):
@@ -123,7 +111,6 @@ class ConnectionManager:
             del self.locks[task_id]
 
     async def send_json(self, data: dict, task_id: str):
-        """向指定任务的前端推送 JSON 格式数据（加锁保证线程安全），并缓存最新状态"""
         self.task_states[task_id] = data
         
         ws = self.active_connections.get(task_id)
@@ -133,26 +120,18 @@ class ConnectionManager:
                 async with lock:
                     await ws.send_json(data)
             except Exception:
-                pass # 忽略因前端主动断开而导致的发送异常
+                pass
 
 manager = ConnectionManager()
 
-# ==========================================
-# 全局流水线队列与状态
-# ==========================================
 q_extract = asyncio.Queue()
 q_transcribe = asyncio.Queue()
 q_translate = asyncio.Queue()
 
 global_tasks_status: Dict[str, dict] = {}
 
-# ==========================================
-# API 路由
-# ==========================================
-
 @app.get("/api/config")
 async def get_config():
-    """获取默认的参数配置"""
     if not os.path.exists("config.json"):
         if os.path.exists("config.example.json"):
             shutil.copy("config.example.json", "config.json")
@@ -165,7 +144,6 @@ async def get_config():
 
 @app.post("/api/config/restore")
 async def restore_config():
-    """恢复默认配置 (从 config.example.json 覆盖 config.json)"""
     if not os.path.exists("config.example.json"):
         raise HTTPException(status_code=404, detail="找不到 config.example.json 默认配置文件")
     
@@ -179,7 +157,6 @@ async def restore_config():
 
 @app.post("/api/config")
 async def update_config(payload: dict = Body(...)):
-    """接收并保存全局配置，同时立刻应用系统级设置（如代理）"""
     try:
         with open("config.json", "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -190,7 +167,6 @@ async def update_config(payload: dict = Body(...)):
 
 @app.post("/api/proxy/test")
 async def test_proxy(payload: dict = Body(...)):
-    """测试 HTTP/SOCKS5 代理服务器的端口连通性"""
     import urllib.parse
     import socket
     proxy_url = payload.get("proxy_url", "").strip()
@@ -208,7 +184,6 @@ async def test_proxy(payload: dict = Body(...)):
         if not host or not port:
             raise ValueError("代理地址或端口格式无效")
             
-        # 建立一个 TCP socket 测试连接
         with socket.create_connection((host, port), timeout=3.0):
             pass
             
@@ -218,13 +193,11 @@ async def test_proxy(payload: dict = Body(...)):
 
 @app.get("/api/languages")
 async def get_languages():
-    """获取 Whisper 支持的所有语言列表"""
     langs = [{"code": k, "name": v.capitalize()} for k, v in SUPPORTED_LANGUAGES.items()]
     return sorted(langs, key=lambda x: x["name"])
 
 @app.get("/api/models")
 async def get_models():
-    """动态获取 faster-whisper 支持的所有模型列表并分组"""
     models = available_models()
     
     standard_models = []
@@ -247,7 +220,6 @@ async def get_models():
 
 @app.get("/api/llm/models")
 async def get_llm_models(api_key: str, base_url: str = "https://api.openai.com/v1"):
-    """从大模型供应商处拉取支持对话的模型列表"""
     if not api_key:
         raise HTTPException(status_code=400, detail="请先填写 API Key")
     
@@ -271,7 +243,6 @@ async def get_llm_models(api_key: str, base_url: str = "https://api.openai.com/v
 
 @app.get("/api/asr/models")
 async def get_asr_models(api_key: str, base_url: str = "https://api.openai.com/v1"):
-    """从云端语音识别 API 供应商处拉取支持的模型列表"""
     if not api_key:
         raise HTTPException(status_code=400, detail="请先填写 API Key")
     
@@ -288,11 +259,9 @@ async def get_asr_models(api_key: str, base_url: str = "https://api.openai.com/v
             models = data.get("data", [])
             all_model_ids = [m["id"] for m in models if "id" in m]
             
-            # 本地过滤：从返回的通用模型池中，筛选出包含常见语音识别关键字的模型
             asr_keywords = ["whisper", "asr", "audio", "speech", "stt", "sensevoice", "paraformer"]
             filtered_models = [m_id for m_id in all_model_ids if any(kw in m_id.lower() for kw in asr_keywords)]
             
-            # 防呆设计：如果按关键字没有匹配到任何模型，则回退返回所有模型
             return filtered_models if filtered_models else all_model_ids
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode('utf-8')
@@ -302,21 +271,18 @@ async def get_asr_models(api_key: str, base_url: str = "https://api.openai.com/v
 
 @app.post("/api/upload/{asset_type}")
 async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: str = Form(None)):
-    """接收前端上传的媒体资产 (video, audio, srt)"""
     if not task_id:
         task_id = str(uuid.uuid4())
     
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     os.makedirs(task_dir, exist_ok=True)
     
-    # 处理 metadata 以保留原始文件名
     meta_path = os.path.join(task_dir, "meta.json")
     meta_data = {}
     if os.path.exists(meta_path):
         with open(meta_path, "r", encoding="utf-8") as f:
             meta_data = json.load(f)
 
-    # 始终以用户最初上传的文件名作为最终产物的 Base Name
     base_name = os.path.splitext(file.filename)[0]
     if "base_name" not in meta_data:
         meta_data["base_name"] = base_name
@@ -331,7 +297,6 @@ async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: s
     else:
         raise HTTPException(status_code=400, detail="不支持的资产类型")
     
-    # 使用线程池执行大文件拷贝，并大幅增加 chunk size (10MB) 加速本地 I/O
     def _save_file(src, dest):
         with open(dest, "wb") as buffer:
             shutil.copyfileobj(src, buffer, length=1024*1024*10)
@@ -345,7 +310,6 @@ async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: s
 
 @app.post("/api/task/execute")
 async def execute_task(payload: dict = Body(...)):
-    """接收配置并按步骤执行工作流任务，加入流水线队列"""
     task_id = payload.get("task_id")
     if not task_id:
         raise HTTPException(status_code=400, detail="缺少 task_id")
@@ -354,9 +318,6 @@ async def execute_task(payload: dict = Body(...)):
     if not steps:
         raise HTTPException(status_code=400, detail="未指定执行步骤")
 
-    # ==========================================
-    # 在下发任务前，前置校验代理服务器连通性（防呆拦截）
-    # ==========================================
     proxy_url = payload.get("system_settings", {}).get("network_proxy", "").strip()
     if proxy_url:
         import urllib.parse
@@ -376,7 +337,6 @@ async def execute_task(payload: dict = Body(...)):
             print(f"[错误] {err_msg}")
             raise HTTPException(status_code=400, detail=err_msg)
 
-    # 将前端传来的新参数保存回 config.json
     config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
     try:
         with open("config.json", "w", encoding="utf-8") as f:
@@ -384,14 +344,12 @@ async def execute_task(payload: dict = Body(...)):
     except Exception as e:
         print(f"[警告] 无法保存最新配置到 config.json: {e}")
 
-    # 初始化流水线状态
     global_tasks_status[task_id] = {
         "steps": steps,
         "current_step": "pending",
         "config": payload
     }
 
-    # 按照步骤顺序，将任务投入第一个对应的车间队列
     if "extract" in steps:
         global_tasks_status[task_id]["current_step"] = "pending_extract"
         await q_extract.put((task_id, payload))
@@ -406,10 +364,8 @@ async def execute_task(payload: dict = Body(...)):
 
 @app.websocket("/ws/progress/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
-    """WebSocket 接口：前端连入用于监听实时进度"""
     await manager.connect(websocket, task_id)
     try:
-        # 保持连接不断开，等待前端主动断开或任务完成
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
@@ -417,22 +373,17 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
 
 @app.get("/api/task/{task_id}/status")
 async def get_task_status(task_id: str):
-    """获取指定任务的实时运行状态（从内存缓存中读取）"""
     if task_id in manager.task_states:
         return manager.task_states[task_id]
     
-    # 如果内存中没有（比如后端重启了，或者任务还没开始）
-    # 前端可以依据这个 unknown 状态，回退到检查文件产物状态
     return {"status": "unknown"}
 
 @app.get("/api/pipeline/status")
 async def get_pipeline_status():
-    """获取流水线上所有任务的实时工位状态（供前端看板轮询）"""
     return global_tasks_status
 
 @app.get("/api/download/{task_id}")
 async def download_srt(task_id: str, type: str = "original"):
-    """下载生成的字幕文件 (type=original|translated)"""
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if not os.path.exists(task_dir):
         raise HTTPException(status_code=404, detail="任务目录不存在")
@@ -458,7 +409,6 @@ async def download_srt(task_id: str, type: str = "original"):
 
 @app.get("/api/tasks")
 async def list_tasks():
-    """获取所有工作区历史任务列表"""
     tasks = []
     if not os.path.exists(WORKSPACE_DIR):
         return tasks
@@ -478,7 +428,6 @@ async def list_tasks():
             except Exception:
                 pass
                 
-        # 检查各阶段资产是否就绪
         has_video = any(f.startswith("video.") for f in os.listdir(task_dir))
         has_audio = os.path.exists(os.path.join(task_dir, "audio.wav"))
         has_original = os.path.exists(os.path.join(task_dir, "original.srt"))
@@ -492,29 +441,20 @@ async def list_tasks():
 
 @app.delete("/api/task/{task_id}")
 async def delete_task(task_id: str):
-    """删除指定的任务空间"""
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if os.path.exists(task_dir):
         shutil.rmtree(task_dir)
         
-    # 清理内存中残留的任务状态
     manager.task_states.pop(task_id, None)
     global_tasks_status.pop(task_id, None)
     return {"message": "任务删除成功"}
 
-# ==========================================
-# 后台任务逻辑
-# ==========================================
-
-
 def get_hf_repo_id(model_size: str) -> str:
-    """推导 Hugging Face 上的完整仓库名称"""
     if "distil" in model_size:
         return f"Systran/faster-distil-whisper-{model_size.replace('distil-', '')}"
     return f"Systran/faster-whisper-{model_size}"
 
 def get_folder_size(folder_path: str) -> int:
-    """计算文件夹总字节数，忽略软链接，只计算真实的 blobs"""
     total_size = 0
     if not os.path.exists(folder_path):
         return 0
@@ -526,7 +466,6 @@ def get_folder_size(folder_path: str) -> int:
     return total_size
 
 async def monitor_download(task_id: str, download_root: str, model_size: str):
-    """后台监控模型下载进度的守护任务 (精简版: 仅监控当前模型的缓存文件夹)"""
     repo_id = get_hf_repo_id(model_size)
     repo_folder_name = f"models--{repo_id.replace('/', '--')}"
     target_folder = os.path.join(os.getcwd(), download_root, repo_folder_name)
@@ -535,7 +474,6 @@ async def monitor_download(task_id: str, download_root: str, model_size: str):
             current_size = await asyncio.to_thread(get_folder_size, target_folder)
             mb_size = current_size / (1024 * 1024)
             
-            # 只发送体积进度数据，不附带 message 字段，避免前端疯狂刷新日志行
             msg = {
                 "status": "processing", 
                 "step": "downloading", 
@@ -549,9 +487,7 @@ async def monitor_download(task_id: str, download_root: str, model_size: str):
     except Exception as e:
         print(f"[监控线程异常] {e}")
 
-
 async def worker_extract_loop():
-    """工位 1：专门处理音频提取的 Worker"""
     loop = asyncio.get_running_loop()
     while True:
         task_id, config_payload = await q_extract.get()
@@ -577,11 +513,10 @@ async def worker_extract_loop():
             await manager.send_json({"status": "processing", "step": "extract_audio", "message": "正在提取音频..."}, task_id)
             await loop.run_in_executor(None, extract_audio, video_path, audio_path, audio_progress_callback, ffmpeg_settings)
 
-            # 判断是否需要流转到下一工位
             if "transcribe" in steps:
                 if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_transcribe"
                 await q_transcribe.put((task_id, config_payload))
-            elif "translate" in steps: # 罕见跳跃逻辑容错
+            elif "translate" in steps:
                 if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_translate"
                 await q_translate.put((task_id, config_payload))
             else:
@@ -595,13 +530,10 @@ async def worker_extract_loop():
         finally:
             q_extract.task_done()
 
-
 async def worker_transcribe_loop():
-    """工位 2：专门处理语音识别的 Worker（内建空闲释放机制）"""
     loop = asyncio.get_running_loop()
     while True:
         try:
-            # 巧用 wait_for，如果 300 秒内拿不到新任务，触发超时清理内存
             task_id, config_payload = await asyncio.wait_for(q_transcribe.get(), timeout=300.0)
         except asyncio.TimeoutError:
             await loop.run_in_executor(None, unload_model)
@@ -620,6 +552,7 @@ async def worker_transcribe_loop():
                 
             output_srt = os.path.join(task_dir, "original.srt")
             transcribe_settings = config_payload.get("transcribe_settings", {})
+            system_settings = config_payload.get("system_settings", {})
             engine = transcribe_settings.get("engine", "local")
             
             if engine == "api":
@@ -627,7 +560,7 @@ async def worker_transcribe_loop():
                 def api_progress_callback(msg_text):
                     msg = {"status": "processing", "step": "transcribing", "message": msg_text}
                     asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
-                await loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, api_progress_callback)
+                await loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, system_settings, api_progress_callback)
                 
             else:
                 model_settings = config_payload.get("model_settings", {})
@@ -637,7 +570,7 @@ async def worker_transcribe_loop():
                 monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
 
                 try:
-                    segments = await loop.run_in_executor(None, transcribe_audio, audio_path, model_settings, transcribe_settings, vad_settings)
+                    segments = await loop.run_in_executor(None, transcribe_audio, audio_path, model_settings, transcribe_settings, vad_settings, system_settings)
                 finally:
                     monitor_task.cancel()
                     
@@ -649,7 +582,6 @@ async def worker_transcribe_loop():
                     
                 await loop.run_in_executor(None, generate_srt, segments, output_srt, progress_callback)
 
-            # 判断是否需要流转到下一工位
             if "translate" in steps:
                 if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_translate"
                 await q_translate.put((task_id, config_payload))
@@ -664,9 +596,7 @@ async def worker_transcribe_loop():
         finally:
             q_transcribe.task_done()
 
-
 async def worker_translate_loop():
-    """工位 3：专门处理 LLM 翻译的 Worker"""
     loop = asyncio.get_running_loop()
     while True:
         task_id, config_payload = await q_translate.get()
@@ -682,13 +612,14 @@ async def worker_translate_loop():
                 
             output_translated = os.path.join(task_dir, "translated.srt")
             llm_config = config_payload.get("llm_settings", {})
+            system_config = config_payload.get("system_settings", {})
             
             def translate_progress_callback(msg_text):
                 msg = {"status": "processing", "step": "translating", "message": msg_text}
                 asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
                 
             await manager.send_json({"status": "processing", "step": "translating", "message": "正在请求大模型翻译..."}, task_id)
-            await loop.run_in_executor(None, run_llm_translation, input_srt, output_translated, llm_config, translate_progress_callback)
+            await loop.run_in_executor(None, run_llm_translation, input_srt, output_translated, llm_config, system_config, translate_progress_callback)
 
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
             await manager.send_json({"status": "completed", "step": "done", "message": "全量任务流水线完美收官！"}, task_id)
@@ -700,7 +631,6 @@ async def worker_translate_loop():
         finally:
             q_translate.task_done()
 
-# 挂载前端静态文件 (必须放在所有 API 路由的最下方，作为兜底路由)
 app.mount("/", StaticFiles(directory=os.path.join(os.getcwd(), "frontend"), html=True), name="frontend")
 
 if __name__ == "__main__":

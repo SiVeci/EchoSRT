@@ -41,6 +41,9 @@ export default {
                             </el-option-group>
                         </el-select>
                     </el-form-item>
+                    <el-form-item label=" ">
+                        <el-checkbox v-model="store.config.system_settings.use_proxy_for_model_download" label="下载模型时使用全局代理" />
+                    </el-form-item>
                     
                     <el-form-item>
                         <template #label>
@@ -333,6 +336,10 @@ export default {
 
                                     <el-form-item label="API Key">
                                         <el-input v-model="store.config.online_asr_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
+                                    </el-form-item>
+
+                                    <el-form-item label=" ">
+                                        <el-checkbox v-model="store.config.online_asr_settings.use_network_proxy" label="通过全局网络代理访问此 API" />
                                     </el-form-item>
 
                                     <el-form-item>

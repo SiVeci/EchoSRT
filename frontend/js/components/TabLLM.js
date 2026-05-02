@@ -54,6 +54,10 @@ export default {
                                 <el-input v-model="store.config.llm_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
                             </el-form-item>
 
+                            <el-form-item label=" ">
+                                <el-checkbox v-model="store.config.llm_settings.use_network_proxy" label="通过全局网络代理访问此 API" />
+                            </el-form-item>
+
                             <el-form-item>
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">

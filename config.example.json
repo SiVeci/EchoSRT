@@ -1,6 +1,7 @@
 {
   "system_settings": {
-    "network_proxy": ""
+    "network_proxy": "",
+    "use_proxy_for_model_download": false
   },
   "secrets": {
     "hf_token": ""
@@ -59,7 +60,8 @@
     "model_name": "Pro/deepseek-ai/DeepSeek-V3.2",
     "target_language": "zh",
     "batch_size": 50,
-    "system_prompt": ""
+    "system_prompt": "",
+    "use_network_proxy": false
   },
   "online_asr_settings": {
     "provider": "openai",
@@ -70,6 +72,7 @@
     "prompt": "",
     "translate": false,
     "speaker_labels": false,
-    "word_timestamps": false
+    "word_timestamps": false,
+    "use_network_proxy": false
   }
 }

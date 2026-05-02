@@ -100,19 +100,11 @@ def run_api_transcription(
     audio_path: str,
     output_srt_path: str,
     asr_config: dict,
+    system_config: dict,
     progress_callback=None
 ):
     """
     调用云端标准 OpenAI Audio API 进行语音识别，直接生成 SRT 字幕。
-    asr_config 结构示例:
-    {
-        "provider": "openai",
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "sk-...",
-        "model_name": "whisper-1",
-        "language": "zh",
-        "prompt": ""
-    }
     """
     api_key = (asr_config.get("api_key") or "").strip()
     base_url = (asr_config.get("base_url") or "https://api.openai.com/v1").strip()
@@ -120,10 +112,11 @@ def run_api_transcription(
     language = (asr_config.get("language") or "").strip()
     prompt = (asr_config.get("prompt") or "").strip()
     
-    # 新增高级增强参数
     translate_to_english = asr_config.get("translate", False)
     speaker_labels = asr_config.get("speaker_labels", False)
     word_timestamps = asr_config.get("word_timestamps", False)
+    use_proxy = asr_config.get("use_network_proxy", False)
+    proxy_url = system_config.get("network_proxy", "")
 
     if not api_key:
         raise ValueError("缺少云端语音识别 API Key，请先在设置中配置。")
@@ -137,12 +130,16 @@ def run_api_transcription(
     use_verbose_json = speaker_labels or word_timestamps
     req_format = "verbose_json" if use_verbose_json else "srt"
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        timeout=300.0,  # 音频识别可能比较耗时，稍微给多一点超时时间
-        max_retries=2
-    )
+    client_params = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "timeout": 300.0,
+        "max_retries": 2
+    }
+    if use_proxy and proxy_url:
+        client_params["http_client"] = httpx.Client(proxy=proxy_url)
+
+    client = OpenAI(**client_params)
 
     file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
     CHUNK_LIMIT_MB = 24.0
@@ -156,7 +153,7 @@ def run_api_transcription(
             print(f"[*] 音频超过 25MB，正在切片...")
         
         audio = AudioSegment.from_file(audio_path)
-        chunk_length_ms = 10 * 60 * 1000  # 10 分钟为一个分片，16kHz Wav 大约占 18MB
+        chunk_length_ms = 10 * 60 * 1000
         audio_chunks = [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
     else:
         audio_chunks = [audio_path]
@@ -221,7 +218,6 @@ def run_api_transcription(
                 
                 chunk_srt = html.unescape(chunk_srt)
 
-                # 将本切片的时间轴集体加上 offset_seconds
                 if len(audio_chunks) > 1:
                     shifted_srt, current_srt_index = parse_and_shift_srt(chunk_srt, offset_seconds, current_srt_index)
                     final_srt_content += shifted_srt + "\n\n"
@@ -229,7 +225,6 @@ def run_api_transcription(
                     final_srt_content += chunk_srt + "\n\n"
 
             finally:
-                # 清理临时导出的分片文件
                 if not is_file_path and os.path.exists(chunk_to_process):
                     try: os.remove(chunk_to_process)
                     except Exception: pass

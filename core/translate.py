@@ -1,5 +1,6 @@
 import os
 import time
+import httpx
 from openai import OpenAI
 
 DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
@@ -34,13 +35,12 @@ def translate_batch(client, model_name, system_prompt, batch_content, batch_inde
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text_to_translate}
             ],
-            temperature=1.0,  # 稍微收敛一些，防止通用翻译时产生过度幻觉
+            temperature=1.0,
             max_tokens=4096,
             stream=False
         )
 
         translated_text = completion.choices[0].message.content
-        # 清除大模型偶尔自作聪明加上去的 markdown 代码块包裹
         translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
         
         return translated_text
@@ -57,36 +57,27 @@ def run_llm_translation(
     input_srt_path: str, 
     output_srt_path: str, 
     llm_config: dict, 
+    system_config: dict,
     progress_callback=None
 ):
     """
     执行 LLM 翻译任务的核心调度函数。
-    llm_config 结构示例:
-    {
-        "api_key": "sk-...",
-        "base_url": "https://api.siliconflow.cn/v1",
-        "model_name": "Pro/deepseek-ai/DeepSeek-V3.2",
-        "batch_size": 50,
-        "system_prompt": "..."
-    }
     """
     api_key = llm_config.get("api_key", "").strip()
     base_url = llm_config.get("base_url", "https://api.openai.com/v1").strip()
     model_name = llm_config.get("model_name", "Pro/deepseek-ai/DeepSeek-V3.2").strip()
     target_language_code = llm_config.get("target_language", "zh").strip()
     batch_size = llm_config.get("batch_size", 50)
+    use_proxy = llm_config.get("use_network_proxy", False)
+    proxy_url = system_config.get("network_proxy", "")
     
-    # 构建固定不可更改的前半段语言指令
     lang_map = {
         "zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", 
         "fr": "法文", "de": "德文", "es": "西班牙文", "ru": "俄文"
     }
     lang_name = lang_map.get(target_language_code, target_language_code)
 
-    # 1. 固化的角色设定与语言指令
     fixed_role_and_lang = f"你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【{lang_name}】。\n\n"
-
-    # 2. 固化的格式死命令 (确保输出 SRT 格式)
     fixed_format_instructions = """### 🚫 格式死命令：
 1. **保留原文结构**：这是字幕片段，不要合并，不要遗漏。
 2. **保留时间轴**：所有时间戳（如 00:00:01,000 --> ...）必须原样保留，不得修改。
@@ -94,7 +85,6 @@ def run_llm_translation(
 
 """
 
-    # 3. 提取用户自定义的风格指令，如果为空则使用默认的风格要求
     custom_style_prompt = llm_config.get("system_prompt", "").strip()
     if not custom_style_prompt:
         custom_style_prompt = DEFAULT_SYSTEM_PROMPT
@@ -110,12 +100,16 @@ def run_llm_translation(
     if not base_url:
         base_url = "https://api.openai.com/v1"
 
-    client = OpenAI(
-        api_key=api_key, 
-        base_url=base_url,
-        timeout=120.0,
-        max_retries=2
-    )
+    client_params = {
+        "api_key": api_key, 
+        "base_url": base_url,
+        "timeout": 120.0,
+        "max_retries": 2
+    }
+    if use_proxy and proxy_url:
+        client_params["http_client"] = httpx.Client(proxy=proxy_url)
+
+    client = OpenAI(**client_params)
 
     if progress_callback:
         progress_callback("📖 正在读取并解析原生字幕...")
@@ -135,7 +129,6 @@ def run_llm_translation(
     else:
         print(msg)
 
-    # 清空并准备输出文件
     with open(output_srt_path, "w", encoding="utf-8") as f:
         f.write("")
 
