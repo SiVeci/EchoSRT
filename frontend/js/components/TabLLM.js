@@ -54,8 +54,16 @@ export default {
                                 <el-input v-model="store.config.llm_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
                             </el-form-item>
 
-                            <el-form-item label=" ">
-                                <el-checkbox v-model="store.config.llm_settings.use_network_proxy" label="通过全局网络代理访问此 API" />
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        API 访问代理
+                                        <el-tooltip content="调用大语言模型 API 时，通过配置的全局网络代理进行访问。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-switch v-model="store.config.llm_settings.use_network_proxy"></el-switch>
                             </el-form-item>
 
                             <el-form-item>
