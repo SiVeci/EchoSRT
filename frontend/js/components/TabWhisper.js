@@ -407,7 +407,7 @@ export default {
                     :disabled="!store.assets.hasAudio"
                 >
                 <el-icon style="margin-right: 5px;"><Microphone /></el-icon>
-                {{ store.config.transcribe_settings.engine === 'api' ? '▶️ 启动云端 API 识别' : '▶️ 启动本地模型识别' }}
+                {{ store.config.transcribe_settings.engine === 'api' ? ' 启动云端 API 识别' : ' 启动本地模型识别' }}
                 </el-button>
                 
                 <span v-if="!store.assets.hasAudio" class="status-text-error">
