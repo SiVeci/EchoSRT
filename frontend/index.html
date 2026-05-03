@@ -54,6 +54,7 @@
 </head>
 <body>
   <div id="app">
+    <global-settings></global-settings>
     <el-container>
       <el-main class="main-container">
         
@@ -75,7 +76,10 @@
                   {{ store.taskId ? store.taskId.split('-')[0] + '...' : '未创建或未选择' }}
                 </el-tag>
               </div>
-              <div style="display: flex; gap: 15px;">
+              <div style="display: flex; gap: 15px; align-items: center;">
+                <el-button type="info" text circle @click="store.showGlobalSettings = true" title="全局设置" style="margin-right: 5px; font-size: 22px;">
+                  <el-icon><Setting /></el-icon>
+                </el-button>
                 <el-button type="success" size="large" @click="runPipeline(false)" plain>
                   🎯 执行提取工作流 (仅原声字幕)
                 </el-button>

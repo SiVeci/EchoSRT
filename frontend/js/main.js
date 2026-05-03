@@ -6,6 +6,7 @@ import TabAudio from './components/TabAudio.js';
 import TabWhisper from './components/TabWhisper.js';
 import TabLLM from './components/TabLLM.js';
 import GlobalConsole from './components/GlobalConsole.js';
+import GlobalSettings from './components/GlobalSettings.js';
 
 // 引入全局状态与网络请求
 import { store, addLog, connectTaskMonitor } from './store.js';
@@ -17,7 +18,8 @@ const app = createApp({
         TabAudio,
         TabWhisper,
         'tab-llm': TabLLM,
-        GlobalConsole
+        GlobalConsole,
+        GlobalSettings
     },
     setup() {
         // 控制当前激活的 Tab 页面，默认停留在第一页
