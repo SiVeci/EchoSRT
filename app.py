@@ -618,8 +618,8 @@ async def worker_translate_loop():
                 msg = {"status": "processing", "step": "translating", "message": msg_text}
                 asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
                 
-            await manager.send_json({"status": "processing", "step": "translating", "message": "正在请求大模型翻译..."}, task_id)
-            await loop.run_in_executor(None, run_llm_translation, input_srt, output_translated, llm_config, system_config, translate_progress_callback)
+            await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
+            await run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback)
 
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
             await manager.send_json({"status": "completed", "step": "done", "message": "全量任务流水线完美收官！"}, task_id)

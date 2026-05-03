@@ -2,6 +2,7 @@ import os
 import json
 import platform
 import shutil
+import asyncio
 from core.audio_extractor import extract_audio
 from core.whisper_engine import transcribe_audio
 from core.srt_formatter import generate_srt
@@ -108,11 +109,12 @@ def main():
             choice = input(f"\n[*] 检测到已配置大模型 API Key，是否继续进行智能翻译出熟肉？(y/N): ").strip().lower()
             if choice == 'y':
                 print(f"[*] 正在调用大模型进行翻译，目标语言: {llm_config.get('target_language', 'zh')}")
-                run_llm_translation(
+                asyncio.run(run_llm_translation(
                     input_srt_path=output_srt_path,
                     output_srt_path=output_translated_path,
-                    llm_config=llm_config
-                )
+                    llm_config=llm_config,
+                    system_config=config.get("system_settings", {})
+                ))
         
     except Exception as e:
         print(f"\n[程序异常中止] 错误详情: {e}")

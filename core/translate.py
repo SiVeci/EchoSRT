@@ -1,7 +1,8 @@
 import os
 import time
 import httpx
-from openai import OpenAI
+import asyncio
+from openai import AsyncOpenAI
 
 DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
 1. **自然流畅**：符合目标语言母语者的表达习惯。
@@ -16,44 +17,47 @@ def parse_srt(content: str) -> list:
     blocks = content.split('\n\n')
     return [b.strip() for b in blocks if b.strip()]
 
-def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, progress_callback=None):
+async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, progress_callback=None):
     """
-    发送单个分块进行翻译
+    发送单个分块进行翻译 (异步并发)
     """
-    msg = f"⏳ 正在翻译第 {batch_index}/{total_batches} 批次 (约 {len(batch_content)} 条)..."
-    if progress_callback:
-        progress_callback(msg)
-    else:
-        print(f"   {msg}")
-        
-    text_to_translate = "\n\n".join(batch_content)
+    async with semaphore:
+        text_to_translate = "\n\n".join(batch_content)
 
-    try:
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text_to_translate}
-            ],
-            temperature=1.0,
-            max_tokens=4096,
-            stream=False
-        )
+        try:
+            completion = await client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text_to_translate}
+                ],
+                temperature=1.0,
+                max_tokens=4096,
+                stream=False
+            )
 
-        translated_text = completion.choices[0].message.content
-        translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
-        
-        return translated_text
+            translated_text = completion.choices[0].message.content
+            translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
+            
+            progress_state["completed"] += 1
+            msg = f"⚡ 正在全速并发翻译中... (已完成 {progress_state['completed']}/{total_batches} 批)"
+            
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(f"   {msg}")
+                
+            return (batch_index, translated_text)
 
-    except Exception as e:
-        error_msg = f"❌ 本批次翻译失败: {e}"
-        if progress_callback:
-            progress_callback(error_msg)
-        else:
-            print(f"   {error_msg}")
-        raise Exception(f"大模型接口请求失败: {e}")
+        except Exception as e:
+            error_msg = f"❌ 第 {batch_index} 批次翻译失败: {e}"
+            if progress_callback:
+                progress_callback(error_msg)
+            else:
+                print(f"   {error_msg}")
+            raise Exception(f"大模型接口请求失败: {e}")
 
-def run_llm_translation(
+async def run_llm_translation(
     input_srt_path: str, 
     output_srt_path: str, 
     llm_config: dict, 
@@ -68,6 +72,7 @@ def run_llm_translation(
     model_name = llm_config.get("model_name", "Pro/deepseek-ai/DeepSeek-V3.2").strip()
     target_language_code = llm_config.get("target_language", "zh").strip()
     batch_size = llm_config.get("batch_size", 50)
+    concurrent_workers = llm_config.get("concurrent_workers", 3)
     use_proxy = llm_config.get("use_network_proxy", False)
     proxy_url = system_config.get("network_proxy", "")
     
@@ -107,9 +112,9 @@ def run_llm_translation(
         "max_retries": 2
     }
     if use_proxy and proxy_url:
-        client_params["http_client"] = httpx.Client(proxy=proxy_url)
+        client_params["http_client"] = httpx.AsyncClient(proxy=proxy_url)
 
-    client = OpenAI(**client_params)
+    client = AsyncOpenAI(**client_params)
 
     if progress_callback:
         progress_callback("📖 正在读取并解析原生字幕...")
@@ -135,26 +140,38 @@ def run_llm_translation(
     success_count = 0
     total_batches = (total_blocks + batch_size - 1) // batch_size
     
+    semaphore = asyncio.Semaphore(concurrent_workers)
+    progress_state = {"completed": 0}
+    tasks = []
+    
     for i in range(0, total_blocks, batch_size):
         batch = srt_blocks[i : i + batch_size]
         current_batch_num = (i // batch_size) + 1
         
-        translated_chunk = translate_batch(
-            client=client, 
-            model_name=model_name, 
-            system_prompt=full_system_prompt, 
-            batch_content=batch, 
-            batch_index=current_batch_num, 
-            total_batches=total_batches,
-            progress_callback=progress_callback
+        tasks.append(
+            translate_batch(
+                client=client, 
+                model_name=model_name, 
+                system_prompt=full_system_prompt, 
+                batch_content=batch, 
+                batch_index=current_batch_num, 
+                total_batches=total_batches,
+                semaphore=semaphore,
+                progress_state=progress_state,
+                progress_callback=progress_callback
+            )
         )
         
+    results = await asyncio.gather(*tasks)
+    
+    for idx, translated_chunk in results:
         if translated_chunk:
             with open(output_srt_path, "a", encoding="utf-8") as f:
                 f.write(translated_chunk + "\n\n")
-            success_count += len(batch)
-        
-        time.sleep(1)
+            
+            batch_start = (idx - 1) * batch_size
+            batch_end = batch_start + batch_size
+            success_count += len(srt_blocks[batch_start:batch_end])
 
     finish_msg = f"🎉 翻译完毕！共成功处理 {success_count}/{total_blocks} 条字幕。"
     if progress_callback:

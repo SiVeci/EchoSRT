@@ -114,6 +114,18 @@ export default {
                             <el-form-item>
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
+                                        并发请求数
+                                        <el-tooltip content="同时发送给大模型的翻译请求数。数字越大越快，但过大易触发 API 限流 (429报错)。本地模型请设为1。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-slider v-model="store.config.llm_settings.concurrent_workers" :min="1" :max="20" :step="1" show-input></el-slider>
+                            </el-form-item>
+
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
                                         System Prompt
                                         <el-tooltip content="控制大模型的翻译风格指令。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top" trigger="click">
                                             <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>

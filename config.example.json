@@ -60,6 +60,7 @@
     "model_name": "Pro/deepseek-ai/DeepSeek-V3.2",
     "target_language": "zh",
     "batch_size": 50,
+    "concurrent_workers": 3,
     "system_prompt": "",
     "use_network_proxy": false
   },
