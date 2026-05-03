@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import config, tasks, ws
+from api.services import config_service
 from api.workers import worker_extract_loop, worker_transcribe_loop, worker_translate_loop
 
 @asynccontextmanager
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
     try:
         if os.path.exists("config/config.json"):
             with open("config/config.json", "r", encoding="utf-8") as f:
-                config.set_global_proxy(json.load(f).get("system_settings", {}).get("network_proxy", ""))
+                config_service.set_global_proxy(json.load(f).get("system_settings", {}).get("network_proxy", ""))
     except Exception as e:
         print(f"[警告] 启动时设置全局代理失败: {e}")
         

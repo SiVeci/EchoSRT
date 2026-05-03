@@ -1,0 +1,1 @@
+# Service Layer: Handles all business logic, file I/O, and external API requests
