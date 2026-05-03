@@ -2,7 +2,9 @@ import os
 import time
 import httpx
 import asyncio
-from openai import AsyncOpenAI
+import traceback
+import openai
+from openai import AsyncOpenAI, APIStatusError, APIConnectionError
 
 DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
 1. **自然流畅**：符合目标语言母语者的表达习惯。
@@ -50,12 +52,25 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
             return (batch_index, translated_text)
 
         except Exception as e:
-            error_msg = f"❌ 第 {batch_index} 批次翻译失败: {e}"
-            if progress_callback:
-                progress_callback(error_msg)
+            if isinstance(e, APIStatusError):
+                error_message = f"❌ 第 {batch_index} 批次大模型 API 返回状态错误 (HTTP Status: {e.status_code})！\n"
+                error_message += f"   - 错误详情 (Response): {e.response.text}\n"
+                print(error_message)
+                if progress_callback: progress_callback(error_message)
+                raise Exception(error_message)
+                
+            elif isinstance(e, APIConnectionError):
+                error_message = f"❌ 第 {batch_index} 批次无法连接到大模型 API 服务器！请检查网络或代理设置。\n   - 错误根源: {e.__cause__}\n"
+                print(error_message)
+                if progress_callback: progress_callback(error_message)
+                raise Exception(error_message)
+                
             else:
-                print(f"   {error_msg}")
-            raise Exception(f"大模型接口请求失败: {e}")
+                error_msg = f"❌ 第 {batch_index} 批次翻译发生未知错误: {e}"
+                print(error_msg)
+                traceback.print_exc()
+                if progress_callback: progress_callback(error_msg)
+                raise Exception(f"大模型接口请求失败: {e}")
 
 async def run_llm_translation(
     input_srt_path: str, 

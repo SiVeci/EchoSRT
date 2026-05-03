@@ -1,5 +1,5 @@
 const { ref, onMounted, watch } = Vue;
-import { store, addLog } from '../store.js';
+import { store, addLog, connectTaskMonitor } from '../store.js';
 import { uploadAsset, getTasks, deleteTask, executeTask, testProxy } from '../api.js';
 
 export default {

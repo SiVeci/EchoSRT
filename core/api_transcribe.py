@@ -4,7 +4,13 @@ import json
 import html
 import re
 import tempfile
-from openai import OpenAI
+import traceback
+import httpx
+
+# [侦错探针 1] 导入 openai 库本身，以便捕获其特定的异常类型
+import openai
+from openai import OpenAI, APIStatusError, APIConnectionError
+
 
 try:
     import platform
@@ -235,4 +241,23 @@ def run_api_transcription(
         if progress_callback: progress_callback("🎉 云端 API 处理完成！字幕已生成。")
 
     except Exception as e:
-        raise Exception(f"云端语音处理接口请求失败: {e}")
+        # [侦错探针 2] 详细捕获并打印不同类型的错误，而不是笼统地抛出一个新异常
+        
+        # 首先捕获 API 返回的 HTTP 状态错误 (如 401, 429, 500)
+        if isinstance(e, APIStatusError):
+            error_message = f"❌ 云端 API 返回状态错误 (HTTP Status: {e.status_code})！\n"
+            error_message += f"   - 错误详情 (Response): {e.response.text}\n"
+            print(error_message)
+            raise Exception(error_message)
+        
+        # 其次捕获网络连接层面的错误 (如 DNS 解析失败, 连接超时)
+        elif isinstance(e, APIConnectionError):
+            error_message = f"❌ 无法连接到云端 API 服务器！请检查网络或代理设置。\n   - 错误根源: {e.__cause__}\n"
+            print(error_message)
+            raise Exception(error_message)
+            
+        # 最后捕获所有其他未知错误，并打印完整的堆栈信息
+        else:
+            print(f"❌ 云端语音处理流程发生未知错误: {e}")
+            traceback.print_exc() # 打印完整的错误调用堆栈，这是最重要的排查线索
+            raise
