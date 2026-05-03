@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import logging
+import shutil
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -12,10 +13,17 @@ from api.workers import worker_extract_loop, worker_transcribe_loop, worker_tran
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 针对本地直接运行 app.py 的用户：在启动前自动生成配置文件
+    if not os.path.exists("config/config.json"):
+        if os.path.exists("config/config.example.json"):
+            os.makedirs("config", exist_ok=True)
+            shutil.copy("config/config.example.json", "config/config.json")
+            print("[*] 首次运行，已自动生成 config/config.json 默认配置文件。")
+            
     # 应用启动时，尝试读取配置并设置全局代理
     try:
-        if os.path.exists("config.json"):
-            with open("config.json", "r", encoding="utf-8") as f:
+        if os.path.exists("config/config.json"):
+            with open("config/config.json", "r", encoding="utf-8") as f:
                 config.set_global_proxy(json.load(f).get("system_settings", {}).get("network_proxy", ""))
     except Exception as e:
         print(f"[警告] 启动时设置全局代理失败: {e}")

@@ -33,6 +33,10 @@ SUPPORTED_LANGUAGES = {
     "vi": "vietnamese", "yi": "yiddish", "yo": "yoruba", "zh": "chinese"
 }
 
+CONFIG_DIR = "config"
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+EXAMPLE_CONFIG_PATH = os.path.join(CONFIG_DIR, "config.example.json")
+
 def set_global_proxy(proxy_url: str):
     proxy = proxy_url.strip() if proxy_url else ""
     if proxy:
@@ -53,25 +57,27 @@ def set_global_proxy(proxy_url: str):
 
 @router.get("/config")
 async def get_config():
-    if not os.path.exists("config.json"):
-        if os.path.exists("config.example.json"):
-            shutil.copy("config.example.json", "config.json")
+    if not os.path.exists(CONFIG_PATH):
+        if os.path.exists(EXAMPLE_CONFIG_PATH):
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            shutil.copy(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
     
     try:
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取配置失败: {str(e)}")
 
 @router.post("/config/restore")
 async def restore_config():
-    if not os.path.exists("config.example.json"):
-        raise HTTPException(status_code=404, detail="找不到 config.example.json 默认配置文件")
+    if not os.path.exists(EXAMPLE_CONFIG_PATH):
+        raise HTTPException(status_code=404, detail="找不到默认配置文件")
     
-    shutil.copy("config.example.json", "config.json")
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    shutil.copy(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
     
     try:
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取恢复后的配置失败: {str(e)}")
@@ -79,7 +85,8 @@ async def restore_config():
 @router.post("/config")
 async def update_config(payload: dict = Body(...)):
     try:
-        with open("config.json", "w", encoding="utf-8") as f:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
         set_global_proxy(payload.get("system_settings", {}).get("network_proxy", ""))
         return {"message": "配置已保存并生效"}

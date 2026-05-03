@@ -21,8 +21,8 @@ services:
     volumes:
       - ./workspace:/app/workspace
       - ./models:/app/models
-      # (可选) 将配置挂载出来防止丢失，如果是首次运行请确保本地有 config.json 否则会挂载成目录报错
-      # - ./config.json:/app/config.json
+      # (可选) 将配置目录挂载出来防止丢失
+      # - ./config:/app/config
     restart: unless-stopped
     # 限制 CPU 和内存使用，防止小内存 NAS 因为下载大模型导致系统卡死
     deploy:
@@ -50,7 +50,7 @@ services:
     volumes:
       - ./workspace:/app/workspace
       - ./models:/app/models
-      # - ./config.json:/app/config.json
+      # - ./config:/app/config
     restart: unless-stopped
     # ========== 开启 NVIDIA 显卡支持 ==========
     deploy:

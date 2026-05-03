@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 5. 拷贝整个项目代码到容器中
 COPY . .
 
+# [新增] 备份默认配置文件到不受挂载影响的根目录，防止被用户的空 volume 覆盖
+RUN cp config/config.example.json /app/config.example.json
+
 # 6. 转换换行符为 Unix 格式并赋予 entrypoint 脚本执行权限
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 

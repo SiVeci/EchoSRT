@@ -31,18 +31,19 @@ def set_global_proxy(proxy_url: str):
 def main():
     print("=== 本地 GPU 视频自动提取字幕工具 ===")
     
-    # 如果不存在 config.json，则自动从 example 复制一份
-    if not os.path.exists("config.json"):
-        if os.path.exists("config.example.json"):
-            shutil.copy("config.example.json", "config.json")
-            print("[*] 首次运行，已自动生成 config.json 默认配置文件。")
+    # 如果不存在 config.json，则自动从 example 复制一份 (已迁移至 config 目录)
+    if not os.path.exists("config/config.json"):
+        if os.path.exists("config/config.example.json"):
+            os.makedirs("config", exist_ok=True)
+            shutil.copy("config/config.example.json", "config/config.json")
+            print("[*] 首次运行，已自动生成 config/config.json 默认配置文件。")
 
     # 尝试加载配置文件
     try:
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open("config/config.json", "r", encoding="utf-8") as f:
             config = json.load(f)
     except Exception as e:
-        print(f"[错误] 读取 config.json 失败: {e}")
+        print(f"[错误] 读取 config/config.json 失败: {e}")
         return
         
     # 从配置中读取并设置 HF_TOKEN

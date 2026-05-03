@@ -76,10 +76,11 @@ async def execute_task(payload: dict = Body(...)):
 
     config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
     try:
-        with open("config.json", "w", encoding="utf-8") as f:
+        os.makedirs("config", exist_ok=True)
+        with open("config/config.json", "w", encoding="utf-8") as f:
             json.dump(config_to_save, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print(f"[警告] 无法保存最新配置到 config.json: {e}")
+        print(f"[警告] 无法保存最新配置到 config/config.json: {e}")
 
     global_tasks_status[task_id] = {
         "steps": steps,
