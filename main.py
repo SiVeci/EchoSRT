@@ -103,7 +103,8 @@ def main():
                 temp_audio_path,
                 model_settings=config.get("model_settings", {}),
                 transcribe_settings=transcribe_settings,
-                vad_settings=config.get("vad_settings", {})
+                vad_settings=config.get("vad_settings", {}),
+                system_config=config.get("system_settings", {})
             )
             generate_srt(segments, output_srt_path)
         
