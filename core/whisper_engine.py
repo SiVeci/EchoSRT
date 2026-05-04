@@ -5,6 +5,7 @@ import gc
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from faster_whisper import WhisperModel
+from huggingface_hub import snapshot_download
 
 _cached_model = None
 _cached_model_params = None
@@ -30,11 +31,10 @@ def transcribe_audio(
     model_size = model_settings.get("model_size", "large-v2")
     download_root = model_settings.get("download_root", "models")
     use_proxy = system_config.get("use_proxy_for_model_download", False)
+    enable_global_proxy = system_config.get("enable_global_proxy", False)
     proxy_url = system_config.get("network_proxy", "")
 
-    if use_proxy and proxy_url:
-        os.environ['HTTP_PROXY'] = proxy_url
-        os.environ['HTTPS_PROXY'] = proxy_url
+    actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
 
     if shutil.which("nvidia-smi"):
         device = "cuda"
@@ -49,19 +49,32 @@ def transcribe_audio(
     
     if _cached_model is None or _cached_model_params != current_params:
         print(f"[*] 正在加载 Whisper 模型 ({model_size}) 到 {device.upper()} ({compute_type})...")
+        
+        # --- 多线程安全预下载逻辑 ---
+        repo_id = f"Systran/faster-whisper-{model_size}"
+        if "distil" in model_size:
+            repo_id = f"Systran/faster-distil-whisper-{model_size.replace('distil-', '')}"
+            
+        # 处理 SOCKS5 远端 DNS 解析，防止 Hugging Face 被本地 DNS 阻断
+        _dl_proxy = proxy_url
+        if _dl_proxy and _dl_proxy.startswith("socks5://"):
+            _dl_proxy = _dl_proxy.replace("socks5://", "socks5h://", 1)
+            
+        proxies = {"http": _dl_proxy, "https": _dl_proxy} if actual_use_proxy else {"http": None, "https": None}
+        try:
+            snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies)
+        except Exception as e:
+            print(f"[*] 模型预下载检查因网络失败或被跳过，将尝试直接使用本地缓存。原因: {e}")
+        # -----------------------------
+        
         _cached_model = WhisperModel(
             model_size, 
             device=device, 
             compute_type=compute_type,
-            download_root=custom_model_dir
+            download_root=custom_model_dir,
+            local_files_only=True
         )
         _cached_model_params = current_params
-    
-    if use_proxy and proxy_url:
-        if 'HTTP_PROXY' in os.environ:
-            del os.environ['HTTP_PROXY']
-        if 'HTTPS_PROXY' in os.environ:
-            del os.environ['HTTPS_PROXY']
 
     print(f"[*] 开始识别音频: {audio_path}")
     

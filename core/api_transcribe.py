@@ -122,7 +122,10 @@ def run_api_transcription(
     speaker_labels = asr_config.get("speaker_labels", False)
     word_timestamps = asr_config.get("word_timestamps", False)
     use_proxy = asr_config.get("use_network_proxy", False)
+    enable_global_proxy = system_config.get("enable_global_proxy", False)
     proxy_url = system_config.get("network_proxy", "")
+
+    actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
 
     if not api_key:
         raise ValueError("缺少云端语音识别 API Key，请先在设置中配置。")
@@ -142,8 +145,10 @@ def run_api_transcription(
         "timeout": 300.0,
         "max_retries": 2
     }
-    if use_proxy and proxy_url:
+    if actual_use_proxy:
         client_params["http_client"] = httpx.Client(proxy=proxy_url)
+    else:
+        client_params["http_client"] = httpx.Client(proxy=None, trust_env=False)
 
     client = OpenAI(**client_params)
 

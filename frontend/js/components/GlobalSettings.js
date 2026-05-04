@@ -1,6 +1,6 @@
 const { ref, watch } = Vue;
 import { store } from '../store.js';
-import { updateConfig, restoreConfig } from '../api.js';
+import { updateConfig, restoreConfig, testProxy } from '../api.js';
 
 export default {
     name: 'GlobalSettings',
@@ -14,16 +14,19 @@ export default {
                     配置后可加速大模型下载及云端 API 请求。开启开关并填写完整后自动生效。
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px; background: #f5f7fa; padding: 15px; border-radius: 4px;">
-                    <el-switch v-model="proxyEnabled" @change="handleProxyChange" active-text="开启" inactive-text="关闭"></el-switch>
+                    <el-switch v-model="proxyEnabled" @change="handleSwitchChange" active-text="开启" inactive-text="关闭"></el-switch>
                     
                     <div style="display: flex; align-items: center; gap: 8px;" :style="{ opacity: proxyEnabled ? 1 : 0.5, pointerEvents: proxyEnabled ? 'auto' : 'none', filter: proxyEnabled ? 'none' : 'grayscale(100%)' }">
-                        <el-select v-model="proxyProtocol" @change="handleProxyChange" style="width: 105px;">
+                        <el-select v-model="proxyProtocol" @change="handleInputChange" style="width: 105px;">
                             <el-option label="HTTP" value="http://"></el-option>
                             <el-option label="SOCKS5" value="socks5://"></el-option>
                         </el-select>
-                        <el-input v-model="proxyHost" @blur="handleProxyChange" @keyup.enter="handleProxyChange" placeholder="IP/域名 (如 127.0.0.1)" style="width: 180px;"></el-input>
+                        <el-input v-model="proxyHost" @blur="handleInputChange" @keyup.enter="handleInputChange" placeholder="IP/域名 (如 127.0.0.1)" style="width: 180px;"></el-input>
                         <span style="font-weight: bold; color: #909399;">:</span>
-                        <el-input-number v-model="proxyPort" @change="handleProxyChange" @blur="handleProxyChange" @keyup.enter="handleProxyChange" :min="1" :max="65535" :controls="false" placeholder="端口" style="width: 75px;"></el-input-number>
+                        <el-input-number v-model="proxyPort" @change="handleInputChange" @blur="handleInputChange" @keyup.enter="handleInputChange" :min="1" :max="65535" :controls="false" placeholder="端口" style="width: 75px;"></el-input-number>
+                        <el-button type="info" plain :loading="isTestingProxy" :disabled="!proxyEnabled || !proxyHost || !proxyPort" @click="handleTestProxy" style="margin-left: 5px;">
+                            <el-icon style="margin-right: 4px;"><Link /></el-icon> 测试连通性
+                        </el-button>
                     </div>
                 </div>
             </div>
@@ -56,47 +59,76 @@ export default {
         const proxyProtocol = ref("http://");
         const proxyHost = ref("");
         const proxyPort = ref(null);
+        const isTestingProxy = ref(false);
 
-        const parseProxyString = (proxyStr) => {
-            if (!proxyStr) { proxyEnabled.value = false; return; }
-            proxyEnabled.value = true;
-            let protocol = "http://", rest = proxyStr;
-            if (proxyStr.startsWith("socks5://") || proxyStr.startsWith("socks5h://")) {
-                protocol = "socks5://"; rest = proxyStr.replace(/^socks5h?:\/\//, "");
-            } else if (proxyStr.startsWith("http://") || proxyStr.startsWith("https://")) {
-                protocol = proxyStr.startsWith("https://") ? "https://" : "http://";
-                rest = proxyStr.replace(/^https?:\/\//, "");
+        watch(() => store.config.system_settings, (newSettings) => {
+            if (newSettings) {
+                if (proxyEnabled.value !== newSettings.enable_global_proxy) {
+                    proxyEnabled.value = !!newSettings.enable_global_proxy;
+                }
+                const proxyStr = newSettings.network_proxy || "";
+                const currentUIStr = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
+                const currentUIStrSocks5h = `${proxyProtocol.value.replace('socks5://', 'socks5h://')}${proxyHost.value}:${proxyPort.value}`;
+                
+                if (proxyStr && proxyStr !== currentUIStr && proxyStr !== currentUIStrSocks5h) {
+                    let protocol = "http://", rest = proxyStr;
+                    if (proxyStr.startsWith("socks5://") || proxyStr.startsWith("socks5h://")) {
+                        protocol = "socks5://"; rest = proxyStr.replace(/^socks5h?:\/\//, "");
+                    } else if (proxyStr.startsWith("http://") || proxyStr.startsWith("https://")) {
+                        protocol = proxyStr.startsWith("https://") ? "https://" : "http://";
+                        rest = proxyStr.replace(/^https?:\/\//, "");
+                    }
+                    proxyProtocol.value = protocol;
+                    const lastColonIdx = rest.lastIndexOf(":");
+                    if (lastColonIdx !== -1) {
+                        proxyHost.value = rest.substring(0, lastColonIdx);
+                        proxyPort.value = parseInt(rest.substring(lastColonIdx + 1)) || null;
+                    } else { proxyHost.value = rest; proxyPort.value = null; }
+                }
             }
-            proxyProtocol.value = protocol;
-            const lastColonIdx = rest.lastIndexOf(":");
-            if (lastColonIdx !== -1) {
-                proxyHost.value = rest.substring(0, lastColonIdx);
-                proxyPort.value = parseInt(rest.substring(lastColonIdx + 1)) || null;
-            } else { proxyHost.value = rest; proxyPort.value = null; }
+        }, { deep: true, immediate: true });
+
+        const handleSwitchChange = async () => {
+            store.config.system_settings.enable_global_proxy = proxyEnabled.value;
+            if (!proxyEnabled.value) {
+                store.config.llm_settings.use_network_proxy = false;
+                store.config.online_asr_settings.use_network_proxy = false;
+                store.config.system_settings.use_proxy_for_model_download = false;
+            }
+            if (proxyHost.value && proxyPort.value) {
+                store.config.system_settings.network_proxy = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
+            }
+            try { 
+                await updateConfig(store.config); 
+                if (proxyEnabled.value) ElementPlus.ElMessage.success("⚡ 全局网络代理总闸已通电！分流开关已激活。");
+                else ElementPlus.ElMessage.success("🔌 全局代理总闸已断电！所有模块强制直连。");
+            } catch (e) {}
         };
 
-        watch(() => store.config.system_settings.network_proxy, (newVal) => {
-            const currentUIStr = proxyEnabled.value ? `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}` : "";
-            const currentUIStrSocks5h = proxyEnabled.value ? `${proxyProtocol.value.replace('socks5://', 'socks5h://')}${proxyHost.value}:${proxyPort.value}` : "";
-            if (newVal !== currentUIStr && newVal !== currentUIStrSocks5h) parseProxyString(newVal);
-        }, { immediate: true });
-
-        const handleProxyChange = async () => {
-            if (!proxyEnabled.value) {
-                store.config.system_settings.network_proxy = "";
-                try { await updateConfig(store.config); ElementPlus.ElMessage.success("已恢复直连模式"); } catch (e) {}
-                return;
+        const handleInputChange = async () => {
+            if (proxyHost.value && proxyPort.value) {
+                store.config.system_settings.network_proxy = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
+                try { await updateConfig(store.config); } catch (e) {}
             }
-            if (!proxyHost.value || !proxyPort.value) { ElementPlus.ElMessage.warning("⚠️ 请完整填写代理的 IP/域名 和 端口号！"); return; }
-            const fullProxy = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
-            if (store.config.system_settings.network_proxy === fullProxy) return;
-            store.config.system_settings.network_proxy = fullProxy;
-            try { await updateConfig(store.config); ElementPlus.ElMessage.success("全局网络代理已生效！"); } catch (e) {}
         };
 
         const handleSaveConfig = async () => {
             try { await updateConfig(store.config); ElementPlus.ElMessage.success("🎉 所有配置已成功保存！"); } 
             catch(e) { ElementPlus.ElMessage.error("保存配置失败: " + e.message); }
+        };
+
+        const handleTestProxy = async () => {
+            if (!proxyHost.value || !proxyPort.value) return;
+            const fullProxy = `${proxyProtocol.value}${proxyHost.value}:${proxyPort.value}`;
+            isTestingProxy.value = true;
+            try {
+                await testProxy(fullProxy);
+                ElementPlus.ElMessage.success("代理服务器连接成功！");
+            } catch (e) {
+                ElementPlus.ElMessage.error(e.message || "代理服务器连接失败，请检查配置。");
+            } finally {
+                isTestingProxy.value = false;
+            }
         };
 
         const handleRestoreConfig = async () => {
@@ -114,6 +146,6 @@ export default {
             } catch (e) { if (e !== 'cancel') ElementPlus.ElMessage.error("恢复配置失败: " + (e.message || e)); }
         };
 
-        return { store, proxyEnabled, proxyProtocol, proxyHost, proxyPort, handleProxyChange, handleSaveConfig, handleRestoreConfig };
+        return { store, proxyEnabled, proxyProtocol, proxyHost, proxyPort, isTestingProxy, handleSwitchChange, handleInputChange, handleSaveConfig, handleRestoreConfig, handleTestProxy };
     }
 };

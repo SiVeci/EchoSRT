@@ -35,9 +35,12 @@ CONFIG_DIR = "config"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 EXAMPLE_CONFIG_PATH = os.path.join(CONFIG_DIR, "config.example.json")
 
-def set_global_proxy(proxy_url: str):
-    proxy = proxy_url.strip() if proxy_url else ""
-    if proxy:
+def set_global_proxy(system_settings: dict):
+    proxy_url = system_settings.get("network_proxy", "").strip()
+    enable_global = system_settings.get("enable_global_proxy", False)
+    
+    if enable_global and proxy_url:
+        proxy = proxy_url
         if proxy.startswith("socks5://"): proxy = proxy.replace("socks5://", "socks5h://", 1)
         elif not proxy.startswith("http://") and not proxy.startswith("https://") and not proxy.startswith("socks5h://"):
             proxy = f"http://{proxy}"
@@ -46,6 +49,8 @@ def set_global_proxy(proxy_url: str):
         print(f"[*] 已动态应用全局网络代理: {proxy}")
     else:
         for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"]: os.environ.pop(k, None)
+        if not enable_global:
+            print("[*] 全局代理总闸已关闭，恢复纯净直连模式。")
 
 def get_config():
     if not os.path.exists(CONFIG_PATH) and os.path.exists(EXAMPLE_CONFIG_PATH):
@@ -67,7 +72,7 @@ def update_config(payload: dict):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(CONFIG_PATH, "w", encoding="utf-8") as f: json.dump(payload, f, indent=2, ensure_ascii=False)
-        set_global_proxy(payload.get("system_settings", {}).get("network_proxy", ""))
+        set_global_proxy(payload.get("system_settings", {}))
         return {"message": "配置已保存并生效"}
     except Exception as e: raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
 

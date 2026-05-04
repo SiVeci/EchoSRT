@@ -9,12 +9,14 @@ from core.srt_formatter import generate_srt
 from core.translate import run_llm_translation
 from core.api_transcribe import run_api_transcription
 
-def set_global_proxy(proxy_url: str):
+def set_global_proxy(system_settings: dict):
     """动态配置系统代理与防呆纠正"""
-    proxy = proxy_url.strip() if proxy_url else ""
-    if proxy:
-        if proxy.startswith("socks5://"):
-            proxy = proxy.replace("socks5://", "socks5h://", 1)
+    proxy_url = system_settings.get("network_proxy", "").strip()
+    enable_global = system_settings.get("enable_global_proxy", False)
+    
+    if enable_global and proxy_url:
+        proxy = proxy_url
+        if proxy.startswith("socks5://"): proxy = proxy.replace("socks5://", "socks5h://", 1)
         elif not proxy.startswith("http://") and not proxy.startswith("https://") and not proxy.startswith("socks5h://"):
             proxy = f"http://{proxy}"
         
@@ -52,7 +54,7 @@ def main():
         os.environ["HF_TOKEN"] = hf_token
 
     # 设置全局代理
-    set_global_proxy(config.get("system_settings", {}).get("network_proxy", ""))
+    set_global_proxy(config.get("system_settings", {}))
 
     # 提示用户输入视频路径，并去除两端可能存在的文件路径引号（处理文件拖拽的情况）
     video_path = input("请输入需要处理的视频文件路径: ").strip('\"\'')

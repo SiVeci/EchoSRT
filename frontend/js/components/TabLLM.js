@@ -63,7 +63,7 @@ export default {
                                         </el-tooltip>
                                     </span>
                                 </template>
-                                <el-switch v-model="store.config.llm_settings.use_network_proxy"></el-switch>
+                                <el-switch v-model="store.config.llm_settings.use_network_proxy" :disabled="!store.config.system_settings.enable_global_proxy"></el-switch>
                             </el-form-item>
 
                             <el-form-item>

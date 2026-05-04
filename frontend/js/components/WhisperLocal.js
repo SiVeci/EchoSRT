@@ -242,7 +242,7 @@ export default {
                                             </el-tooltip>
                                         </span>
                                     </template>
-                                    <el-switch v-model="store.config.system_settings.use_proxy_for_model_download"></el-switch>
+                                    <el-switch v-model="store.config.system_settings.use_proxy_for_model_download" :disabled="!store.config.system_settings.enable_global_proxy"></el-switch>
                                 </el-form-item>
                             </el-form>
                         </el-tab-pane>

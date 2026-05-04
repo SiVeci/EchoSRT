@@ -89,7 +89,10 @@ async def run_llm_translation(
     batch_size = llm_config.get("batch_size", 50)
     concurrent_workers = llm_config.get("concurrent_workers", 3)
     use_proxy = llm_config.get("use_network_proxy", False)
+    enable_global_proxy = system_config.get("enable_global_proxy", False)
     proxy_url = system_config.get("network_proxy", "")
+    
+    actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
     
     lang_map = {
         "zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", 
@@ -126,8 +129,10 @@ async def run_llm_translation(
         "timeout": 120.0,
         "max_retries": 2
     }
-    if use_proxy and proxy_url:
+    if actual_use_proxy:
         client_params["http_client"] = httpx.AsyncClient(proxy=proxy_url)
+    else:
+        client_params["http_client"] = httpx.AsyncClient(proxy=None, trust_env=False)
 
     client = AsyncOpenAI(**client_params)
 

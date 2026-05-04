@@ -52,10 +52,10 @@ pip install -r requirements.txt
 ```
 
 2. **一键启动 WebUI**
-   - 在项目根目录下，使用 Python 运行跨平台统一启动脚本：
-     ```bash
-     python app.py
-     ```
+在项目根目录下，使用 Python 运行跨平台统一启动脚本：
+```bash
+python app.py
+```
 
 脚本会自动启动后端 API 及静态页面托管，浏览器访问 `http://127.0.0.1:8000` 即可进入工作台；访问 `http://127.0.0.1:8000/docs` 可查看二次开发 API 接口文档。
 

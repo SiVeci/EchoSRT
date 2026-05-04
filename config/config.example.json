@@ -1,6 +1,7 @@
 {
   "system_settings": {
     "network_proxy": "",
+    "enable_global_proxy": false,
     "use_proxy_for_model_download": false
   },
   "secrets": {

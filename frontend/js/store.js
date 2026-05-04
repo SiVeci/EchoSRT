@@ -34,7 +34,7 @@ export const store = reactive({
 
     // --- 全局配置参数 (完整镜像后端的 config.json 结构) ---
     config: {
-        system_settings: { network_proxy: "" },
+        system_settings: { network_proxy: "", enable_global_proxy: false },
         secrets: { hf_token: "" },
         model_settings: { model_size: "medium", download_root: "models" },
         transcribe_settings: { 
