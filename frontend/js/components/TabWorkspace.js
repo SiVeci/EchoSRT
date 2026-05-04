@@ -81,7 +81,7 @@ export default {
                     <el-table-column label="焦点操作" width="160" fixed="right">
                         <template #default="scope">
                             <el-button size="small" type="primary" plain @click="loadTask(scope.row)" :disabled="store.taskId === scope.row.task_id">监视</el-button>
-                            <el-button size="small" type="danger" plain @click="removeTask(scope.row)">删除</el-button>
+                            <el-button size="small" type="danger" plain @click="removeTask(scope.row)" :disabled="isTaskRunning(scope.row.task_id)">删除</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -127,6 +127,11 @@ export default {
                 'completed': '✔ 完毕收工', 'error': '✖ 发生错误'
             };
             return map[step] || step;
+        };
+
+        const isTaskRunning = (taskId) => {
+            const step = store.pipelineStatus[taskId]?.current_step;
+            return ['pending_extract', 'extracting', 'pending_transcribe', 'transcribing', 'pending_translate', 'translating'].includes(step);
         };
 
         // 多文件批量串行上传队列
@@ -187,7 +192,8 @@ export default {
 
             // 代理连通性前置测试拦截
             const proxyUrl = store.config.system_settings.network_proxy;
-            if (proxyUrl) {
+            const enableProxy = store.config.system_settings.enable_global_proxy;
+            if (enableProxy && proxyUrl) {
                 try {
                     addLog(`🔄 正在测试代理服务器连通性: ${proxyUrl}`, "info");
                     await testProxy(proxyUrl);
@@ -268,13 +274,13 @@ export default {
                 
                 isLoadingTasks.value = true;
                 let successCount = 0;
-                // 高并发发出删除请求
-                await Promise.all(taskList.value.map(async (task) => {
+                // 串行发出删除请求，避免前端网络拥塞和后端磁盘 I/O 风暴
+                for (const task of taskList.value) {
                     try {
                         await deleteTask(task.task_id);
                         successCount++;
                     } catch (e) {}
-                }));
+                }
                 
                 store.taskId = null;
                 store.activeStep = 0;
@@ -294,6 +300,7 @@ export default {
             selectedTasks,
             isLoadingTasks,
             handleSelectionChange,
+            isTaskRunning,
             handleUpload,
             loadTask,
             removeTask,

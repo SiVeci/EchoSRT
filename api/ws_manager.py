@@ -20,12 +20,13 @@ class ConnectionManager:
         self.active_connections[task_id] = websocket
         self.locks[task_id] = asyncio.Lock()
 
-    def disconnect(self, task_id: str):
+    def disconnect(self, task_id: str, websocket: WebSocket = None):
         """断开并清理 WebSocket 连接"""
         if task_id in self.active_connections:
-            del self.active_connections[task_id]
-        if task_id in self.locks:
-            del self.locks[task_id]
+            if websocket is None or self.active_connections[task_id] == websocket:
+                del self.active_connections[task_id]
+                if task_id in self.locks:
+                    del self.locks[task_id]
 
     async def send_json(self, data: dict, task_id: str):
         """向指定的客户端安全地发送 JSON 数据"""

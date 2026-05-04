@@ -59,6 +59,15 @@ export default {
             });
         });
 
+        // 当用户主动展开日志面板时，立即滚动到最底部以展示最新日志
+        watch(activeCollapse, (newVal) => {
+            if (newVal.includes('1')) {
+                nextTick(() => {
+                    if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight;
+                });
+            }
+        });
+
         const downloadSrt = (type) => {
             if (!store.taskId) return;
             window.open(`${API_BASE}/api/download/${store.taskId}?type=${type}`, "_blank");

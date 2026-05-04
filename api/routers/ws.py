@@ -11,7 +11,7 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(task_id)
+        manager.disconnect(task_id, websocket)
 
 @router.get("/api/task/{task_id}/status")
 async def get_task_status(task_id: str):

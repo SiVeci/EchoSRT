@@ -94,7 +94,8 @@ def main():
             run_api_transcription(
                 audio_path=temp_audio_path,
                 output_srt_path=output_srt_path,
-                asr_config=config.get("online_asr_settings", {})
+                asr_config=config.get("online_asr_settings", {}),
+                system_config=config.get("system_settings", {})
             )
         else:
             print("\n[*] 正在使用本地 Whisper 模型进行语音识别...")

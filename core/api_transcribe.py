@@ -6,6 +6,7 @@ import re
 import tempfile
 import traceback
 import httpx
+import uuid
 
 # [侦错探针 1] 导入 openai 库本身，以便捕获其特定的异常类型
 import openai
@@ -173,13 +174,14 @@ def run_api_transcription(
     final_srt_content = ""
     current_srt_index = 1
     temp_dir = tempfile.gettempdir()
+    task_uuid = uuid.uuid4().hex[:8]
 
     try:
         for idx, chunk in enumerate(audio_chunks):
             is_file_path = isinstance(chunk, str)
             if not is_file_path:
                 offset_seconds = (idx * chunk_length_ms) / 1000.0
-                temp_chunk_path = os.path.join(temp_dir, f"echo_srt_temp_chunk_{idx}.wav")
+                temp_chunk_path = os.path.join(temp_dir, f"echo_srt_temp_chunk_{task_uuid}_{idx}.wav")
                 chunk.export(temp_chunk_path, format="wav")
                 chunk_to_process = temp_chunk_path
                 
@@ -205,8 +207,7 @@ def run_api_transcription(
                     extra_body = {}
                     if speaker_labels: extra_body["speaker_labels"] = True
                     if word_timestamps:
-                        if translate_to_english: extra_body["timestamp_granularities"] = ["word"]
-                        else: kwargs["timestamp_granularities"] = ["word"]
+                        if not translate_to_english: kwargs["timestamp_granularities"] = ["word"]
                             
                     if extra_body: kwargs["extra_body"] = extra_body
 

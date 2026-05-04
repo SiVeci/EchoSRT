@@ -47,7 +47,7 @@ def get_download_file_path(task_id: str, type: str = "original"):
     if not os.path.exists(target_file): raise HTTPException(status_code=404, detail="请求的字幕文件尚未生成或不存在")
     return target_file, out_name
 
-async def get_all_tasks():
+def get_all_tasks():
     tasks = []
     if not os.path.exists(WORKSPACE_DIR): return tasks
         
@@ -66,7 +66,16 @@ async def get_all_tasks():
     return sorted(tasks, key=lambda x: x["created_at"], reverse=True)
 
 def delete_task_workspace(task_id: str):
+    if task_id in global_tasks_status:
+        step = global_tasks_status[task_id].get("current_step")
+        if step in ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]:
+            raise HTTPException(status_code=400, detail="该任务正在执行中，为防止文件损坏，无法删除！")
+            
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
-    if os.path.exists(task_dir): shutil.rmtree(task_dir)
+    if os.path.exists(task_dir): 
+        try:
+            shutil.rmtree(task_dir)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"文件被占用或无法删除: {str(e)}")
     global_tasks_status.pop(task_id, None)
     return {"message": "任务删除成功"}

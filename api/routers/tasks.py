@@ -18,9 +18,9 @@ async def download_srt(task_id: str, type: str = "original"):
     return FileResponse(target_file, media_type="text/plain", filename=out_name)
 
 @router.get("/tasks")
-async def list_tasks():
-    return await workspace_service.get_all_tasks()
+def list_tasks():
+    return workspace_service.get_all_tasks()
 
 @router.delete("/task/{task_id}")
-async def delete_task(task_id: str):
+def delete_task(task_id: str):
     return workspace_service.delete_task_workspace(task_id)

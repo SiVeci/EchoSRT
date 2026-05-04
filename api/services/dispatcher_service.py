@@ -1,6 +1,7 @@
 import os
 import json
 from fastapi import HTTPException
+import asyncio
 from ..state import q_extract, q_transcribe, q_translate, global_tasks_status
 from .config_service import test_proxy
 
@@ -11,9 +12,15 @@ async def dispatch_task(payload: dict):
     steps = payload.get("steps", [])
     if not steps: raise HTTPException(status_code=400, detail="未指定执行步骤")
 
-    proxy_url = payload.get("system_settings", {}).get("network_proxy", "").strip()
-    if proxy_url:
-        test_proxy(proxy_url) # 复用配置服务中的连通性测试逻辑
+    current_status = global_tasks_status.get(task_id, {}).get("current_step")
+    if current_status in ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]:
+        raise HTTPException(status_code=400, detail="该任务已在执行队列中，请勿重复下发。")
+
+    system_settings = payload.get("system_settings", {})
+    proxy_url = system_settings.get("network_proxy", "").strip()
+    enable_proxy = system_settings.get("enable_global_proxy", False)
+    if enable_proxy and proxy_url:
+        await asyncio.to_thread(test_proxy, proxy_url) # 防止阻塞主事件循环
 
     config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
     try:
