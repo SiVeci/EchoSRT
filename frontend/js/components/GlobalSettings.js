@@ -21,11 +21,11 @@ export default {
                             <el-option label="HTTP" value="http://"></el-option>
                             <el-option label="SOCKS5" value="socks5://"></el-option>
                         </el-select>
-                        <el-input v-model="proxyHost" @blur="handleInputChange" @keyup.enter="handleInputChange" placeholder="IP/域名 (如 127.0.0.1)" style="width: 180px;"></el-input>
+                        <el-input v-model="proxyHost" @blur="handleInputChange" @keyup.enter="handleInputChange" placeholder="IP/域名 (如 127.0.0.1)" style="width: 135px;"></el-input>
                         <span style="font-weight: bold; color: #909399;">:</span>
-                        <el-input-number v-model="proxyPort" @change="handleInputChange" @blur="handleInputChange" @keyup.enter="handleInputChange" :min="1" :max="65535" :controls="false" placeholder="端口" style="width: 75px;"></el-input-number>
+                        <el-input-number v-model="proxyPort" @change="handleInputChange" @blur="handleInputChange" @keyup.enter="handleInputChange" :min="1" :max="65535" :controls="false" placeholder="端口" style="width: 70px;"></el-input-number>
                         <el-button type="info" plain :loading="isTestingProxy" :disabled="!proxyEnabled || !proxyHost || !proxyPort" @click="handleTestProxy" style="margin-left: 5px;">
-                            <el-icon style="margin-right: 4px;"><Link /></el-icon> 测试连通性
+                            <el-icon style="margin-right: 4px;"><Link /></el-icon> 测试
                         </el-button>
                     </div>
                 </div>
