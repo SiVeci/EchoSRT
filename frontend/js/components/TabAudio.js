@@ -119,6 +119,7 @@ export default {
                 store.taskId = res.task_id;
                 store.assets.hasAudio = true;
                 store.activeStep = 2; // 进度条更新：资产/音频已就绪
+                store.refreshTasksTrigger++;
                 addLog(`✅ 外部音频上传成功！任务 ID: ${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("音频上传成功，请前往【原声识别】页！");
             } catch (e) {

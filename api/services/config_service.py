@@ -6,6 +6,7 @@ import urllib.error
 import socket
 import urllib.parse
 import subprocess
+import asyncio
 from fastapi import HTTPException
 from faster_whisper import available_models
 
@@ -53,6 +54,8 @@ def set_global_proxy(system_settings: dict):
         if not enable_global:
             print("[*] 全局代理总闸已关闭，恢复纯净直连模式。")
 
+config_lock = asyncio.Lock()
+
 def get_system_info():
     if shutil.which("nvidia-smi"):
         gpu_name = "NVIDIA GPU"
@@ -73,18 +76,30 @@ def get_config():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f: return json.load(f)
     except Exception as e: raise HTTPException(status_code=500, detail=f"读取配置失败: {str(e)}")
 
-def restore_config():
+async def restore_config():
     if not os.path.exists(EXAMPLE_CONFIG_PATH): raise HTTPException(status_code=404, detail="找不到默认配置文件")
     os.makedirs(CONFIG_DIR, exist_ok=True)
-    shutil.copy(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
-    try:
+    
+    def _restore():
+        shutil.copy(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
         with open(CONFIG_PATH, "r", encoding="utf-8") as f: return json.load(f)
+        
+    try:
+        async with config_lock:
+            config = await asyncio.to_thread(_restore)
+        set_global_proxy(config.get("system_settings", {}))
+        return config
     except Exception as e: raise HTTPException(status_code=500, detail=f"读取恢复后的配置失败: {str(e)}")
 
-def update_config(payload: dict):
+async def update_config(payload: dict):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f: json.dump(payload, f, indent=2, ensure_ascii=False)
+        def _save():
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f: json.dump(payload, f, indent=2, ensure_ascii=False)
+            
+        async with config_lock:
+            await asyncio.to_thread(_save)
+            
         set_global_proxy(payload.get("system_settings", {}))
         return {"message": "配置已保存并生效"}
     except Exception as e: raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")

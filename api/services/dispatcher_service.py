@@ -3,7 +3,7 @@ import json
 from fastapi import HTTPException
 import asyncio
 from ..state import q_extract, q_transcribe, q_translate, global_tasks_status
-from .config_service import test_proxy
+from .config_service import test_proxy, config_lock
 
 async def dispatch_task(payload: dict):
     task_id = payload.get("task_id")
@@ -23,10 +23,14 @@ async def dispatch_task(payload: dict):
         await asyncio.to_thread(test_proxy, proxy_url) # 防止阻塞主事件循环
 
     config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
-    try:
+    
+    def _save_config():
         os.makedirs("config", exist_ok=True)
         with open("config/config.json", "w", encoding="utf-8") as f: json.dump(config_to_save, f, indent=2, ensure_ascii=False)
-    except Exception as e: print(f"[警告] 无法保存最新配置到 config/config.json: {e}")
+        
+    async with config_lock:
+        try: await asyncio.to_thread(_save_config)
+        except Exception as e: print(f"[警告] 无法保存最新配置到 config/config.json: {e}")
 
     global_tasks_status[task_id] = { "steps": steps, "current_step": "pending", "config": payload }
 

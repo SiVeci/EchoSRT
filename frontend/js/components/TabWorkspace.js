@@ -107,6 +107,8 @@ export default {
         onMounted(() => {
             fetchTasks();
         });
+        
+        watch(() => store.refreshTasksTrigger, fetchTasks);
 
         // 智能状态监听：增量更新 (局部刷新)，只查变化的任务，杜绝全量扫盘
         watch(() => store.pipelineStatus, async (newVal, oldVal) => {
@@ -181,31 +183,38 @@ export default {
             isProcessingQueue = true;
             isUploading.value = true;
 
-            while (uploadQueue.length > 0) {
-                const options = uploadQueue.shift();
-                queueRemaining.value = uploadQueue.length;
-                currentUploadName.value = options.file.name;
-                currentUploadProgress.value = 0;
-                addLog(`开始上传源文件: ${options.file.name} (队列剩余: ${uploadQueue.length} 个)...`, "info");
-                
-                try {
-                    // 智能判断上传的是视频还是纯音频，并调用后端 API
-                    const assetType = options.file.type.startsWith('audio') ? 'audio' : 'video';
-                    const res = await uploadAsset(options.file, assetType, null, (percent) => {
-                        currentUploadProgress.value = percent;
-                    });
-                    addLog(`✅ 上传成功！任务分配 ID: ${res.task_id}`, "success");
-                } catch (e) {
-                    addLog(`❌ 上传失败 [${options.file.name}]: ${e.message}`, "error");
-                } finally {
-                    // 每当有一个文件物理上传完毕，立刻刷新一次看板，实现“边传边显示”的效果
-                    fetchTasks();
+            try {
+                while (uploadQueue.length > 0) {
+                    const options = uploadQueue.shift();
+                    queueRemaining.value = uploadQueue.length;
+                    currentUploadName.value = options.file.name;
+                    currentUploadProgress.value = 0;
+                    addLog(`开始上传源文件: ${options.file.name} (队列剩余: ${uploadQueue.length} 个)...`, "info");
+                    
+                    try {
+                        // 智能判断上传的是视频还是纯音频，并调用后端 API
+                        const assetType = options.file.type.startsWith('audio') ? 'audio' : 'video';
+                        const res = await uploadAsset(options.file, assetType, null, (percent) => {
+                            currentUploadProgress.value = percent;
+                        });
+                        addLog(`✅ 上传成功！任务分配 ID: ${res.task_id}`, "success");
+                    } catch (e) {
+                        addLog(`❌ 上传失败 [${options.file.name}]: ${e.message}`, "error");
+                    } finally {
+                        // 每当有一个文件物理上传完毕，立刻刷新一次看板，实现“边传边显示”的效果
+                        fetchTasks();
+                    }
+                }
+            } finally {
+                isProcessingQueue = false;
+                // 修复 Bug 2：尾部递归侦测，彻底消灭高频拖拽产生的幽灵文件
+                if (uploadQueue.length > 0) {
+                    processUploadQueue();
+                } else {
+                    isUploading.value = false;
+                    ElementPlus.ElMessage.success("批量上传分配完成，请在列表中勾选任务下发执行！");
                 }
             }
-
-            isProcessingQueue = false;
-            isUploading.value = false;
-            ElementPlus.ElMessage.success("批量上传分配完成，请在列表中勾选任务下发执行！");
         };
         
         let uploadDebounceTimer = null;
@@ -246,7 +255,8 @@ export default {
             for (const task of selectedTasks.value) {
                 const steps = [];
                 if (!task.has_audio && task.has_video) steps.push("extract");
-                if (!task.has_original_srt && (task.has_audio || steps.includes("extract"))) steps.push("transcribe");
+                // 修复 Bug 2：允许用户重跑任务以覆盖旧资产
+                if (task.has_audio || steps.includes("extract")) steps.push("transcribe");
                 if (includeTranslation) steps.push("translate");
 
                 if (steps.length > 0) {
@@ -320,9 +330,11 @@ export default {
                     } catch (e) {}
                 }
                 
-                store.taskId = null;
-                store.activeStep = 0;
-                store.assets = { hasVideo: false, hasAudio: false, hasOriginalSrt: false, hasTranslatedSrt: false };
+                if (!isTaskRunning(store.taskId)) {
+                    store.taskId = null;
+                    store.activeStep = 0;
+                    store.assets = { hasVideo: false, hasAudio: false, hasOriginalSrt: false, hasTranslatedSrt: false };
+                }
                 
                 ElementPlus.ElMessage.success(`清理完成！已释放 ${successCount} 个任务的磁盘空间。`);
                 fetchTasks();

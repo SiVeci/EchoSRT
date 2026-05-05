@@ -5,6 +5,7 @@ import asyncio
 import traceback
 import openai
 from openai import AsyncOpenAI, APIStatusError, APIConnectionError
+from api.services.config_service import SUPPORTED_LANGUAGES
 
 DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
 1. **自然流畅**：符合目标语言母语者的表达习惯。
@@ -19,19 +20,23 @@ def parse_srt(content: str) -> list:
     blocks = content.split('\n\n')
     return [b.strip() for b in blocks if b.strip()]
 
-async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, progress_callback=None):
+async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, previous_context="", progress_callback=None):
     """
     发送单个分块进行翻译 (异步并发)
     """
     async with semaphore:
         text_to_translate = "\n\n".join(batch_content)
+        user_content = text_to_translate
+        
+        if previous_context:
+            user_content = f"【以下是上一段原文结尾，仅供上下文衔接参考，🚫禁止翻译该部分🚫】：\n{previous_context}\n\n====================\n\n【👇请严格按照原格式，正式翻译以下字幕片段👇】：\n{text_to_translate}"
 
         try:
             completion = await client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": text_to_translate}
+                    {"role": "user", "content": user_content}
                 ],
                 temperature=1.0,
                 max_tokens=4096,
@@ -94,11 +99,7 @@ async def run_llm_translation(
     
     actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
     
-    lang_map = {
-        "zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", 
-        "fr": "法文", "de": "德文", "es": "西班牙文", "ru": "俄文"
-    }
-    lang_name = lang_map.get(target_language_code, target_language_code)
+    lang_name = SUPPORTED_LANGUAGES.get(target_language_code, target_language_code).capitalize()
 
     fixed_role_and_lang = f"你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【{lang_name}】。\n\n"
     fixed_format_instructions = """### 🚫 格式死命令：
@@ -168,6 +169,11 @@ async def run_llm_translation(
         batch = srt_blocks[i : i + batch_size]
         current_batch_num = (i // batch_size) + 1
         
+        prev_context = ""
+        if i > 0:
+            prev_batch = srt_blocks[max(0, i - 3) : i]
+            prev_context = "\n\n".join(prev_batch)
+        
         tasks.append(
             translate_batch(
                 client=client, 
@@ -178,6 +184,7 @@ async def run_llm_translation(
                 total_batches=total_batches,
                 semaphore=semaphore,
                 progress_state=progress_state,
+                previous_context=prev_context,
                 progress_callback=progress_callback
             )
         )

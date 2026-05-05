@@ -12,12 +12,12 @@ def get_config():
     return config_service.get_config()
 
 @router.post("/config/restore")
-def restore_config():
-    return config_service.restore_config()
+async def restore_config():
+    return await config_service.restore_config()
 
 @router.post("/config")
-def update_config(payload: dict = Body(...)):
-    return config_service.update_config(payload)
+async def update_config(payload: dict = Body(...)):
+    return await config_service.update_config(payload)
 
 @router.post("/proxy/test")
 def test_proxy(payload: dict = Body(...)):

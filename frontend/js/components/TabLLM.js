@@ -95,7 +95,12 @@ export default {
                                     </span>
                                 </template>
                                 <el-select v-model="store.config.llm_settings.target_language" placeholder="选择翻译目标语言" filterable style="width: 100%;">
-                                    <el-option v-for="lang in targetLanguages" :key="lang.code" :label="lang.name + ' (' + lang.code + ')'" :value="lang.code"></el-option>
+                                    <el-option-group label="🌟 常用语言">
+                                        <el-option v-for="lang in pinnedLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
+                                    </el-option-group>
+                                    <el-option-group label="🌐 其他语言 (A-Z)">
+                                        <el-option v-for="lang in otherLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
+                                    </el-option-group>
                                 </el-select>
                             </el-form-item>
 
@@ -170,14 +175,13 @@ export default {
         const isFetchingModels = ref(false);
         const activeCollapse = ref([]); // 默认折叠状态
 
-        // 从后端拉取的常用语言字典中，过滤出几个翻译中常用的语言作为目标语言候选
-        const targetLanguages = computed(() => {
-            const pinnedCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
-            return store.dicts.languages.filter(l => pinnedCodes.includes(l.code));
-        });
+        // 修复 Bug 3：解除翻译语言画地为牢的限制，支持全部语言并分组展示
+        const pinnedCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
+        const pinnedLanguages = computed(() => store.dicts.languages.filter(l => pinnedCodes.includes(l.code)));
+        const otherLanguages = computed(() => store.dicts.languages.filter(l => !pinnedCodes.includes(l.code)));
 
         const fixedPrompt = computed(() => {
-            const lang = targetLanguages.value.find(l => l.code === store.config.llm_settings.target_language);
+            const lang = store.dicts.languages.find(l => l.code === store.config.llm_settings.target_language);
             const langName = lang ? lang.name : '中文';
             return `你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【${langName}】。\n\n### 🚫 格式死命令：\n1. 保留原文结构：这是字幕片段，不要合并，不要遗漏。\n2. 保留时间轴：所有时间戳必须原样保留，不得修改。\n3. 只输出结果：不要加废话，直接输出 SRT 格式文本。`;
         });
@@ -207,6 +211,7 @@ export default {
                 store.taskId = res.task_id;
                 store.assets.hasOriginalSrt = true;
                 store.activeStep = 4; // 进度条跳到 LLM 翻译待命
+                store.refreshTasksTrigger++;
                 addLog(`✅ 外部字幕上传成功！任务 ID: ${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("生肉字幕上传成功，可以直接开始翻译！");
             } catch (e) {
@@ -248,6 +253,6 @@ export default {
             }
         };
 
-        return { store, isUploading, isFetchingModels, activeCollapse, targetLanguages, fixedPrompt, refreshModels, handleSrtUpload, runTranslate };
+        return { store, isUploading, isFetchingModels, activeCollapse, pinnedLanguages, otherLanguages, fixedPrompt, refreshModels, handleSrtUpload, runTranslate };
     }
 };

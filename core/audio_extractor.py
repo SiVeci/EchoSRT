@@ -60,7 +60,7 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
     # 增加 errors='ignore' 防止控制台输出乱码导致 Python 崩溃
     process = subprocess.Popen(
         command, 
-        stdout=subprocess.PIPE, 
+        stdout=subprocess.DEVNULL, 
         stderr=subprocess.PIPE, 
         stdin=subprocess.DEVNULL,
         text=True, 

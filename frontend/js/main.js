@@ -69,8 +69,8 @@ const app = createApp({
                 ElementPlus.ElMessage.error("无法连接到后端服务，请检查 app.py 是否启动。");
             }
             
-            // [新增] 启动全局流水线状态轮询
-            setInterval(async () => {
+            // [新增] 启动全局流水线状态轮询 (尾部递归防雪崩)
+            const pollStatus = async () => {
                 try {
                     const status = await getPipelineStatus();
                     store.pipelineStatus = status;
@@ -92,7 +92,10 @@ const app = createApp({
                         store.isProcessing = (state !== 'completed' && state !== 'error');
                     }
                 } catch (e) {}
-            }, 2000);
+                
+                setTimeout(pollStatus, 2000);
+            };
+            pollStatus();
         });
 
         const restoreActiveTask = async () => {
@@ -138,8 +141,10 @@ const app = createApp({
             const steps = [];
             // 1. 如果有视频且没提取音频，必须先提音
             if (!store.assets.hasAudio && store.assets.hasVideo) steps.push("extract");
-            // 2. 如果没有原生字幕，且具备音频条件，则执行识别
-            if (!store.assets.hasOriginalSrt && (store.assets.hasAudio || steps.includes("extract"))) steps.push("transcribe");
+            // 2. 修复 Bug 1：意图推断防呆。如果是全量且已有原声，则静默跳过识别；如果是单跑提取或无原声，则强制覆盖识别
+            if (store.assets.hasAudio || steps.includes("extract")) {
+                if (!(includeTranslation && store.assets.hasOriginalSrt)) steps.push("transcribe");
+            }
             
             // 3. 如果是全量工作流，检查并加入翻译步骤
             if (includeTranslation) {
