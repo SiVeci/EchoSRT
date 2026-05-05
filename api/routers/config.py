@@ -8,8 +8,8 @@ def get_system_info():
     return config_service.get_system_info()
 
 @router.get("/config")
-def get_config():
-    return config_service.get_config()
+async def get_config():
+    return await config_service.get_config()
 
 @router.post("/config/restore")
 async def restore_config():

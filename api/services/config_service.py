@@ -68,12 +68,17 @@ def get_system_info():
         return {"device": "cuda", "gpu_name": gpu_name}
     return {"device": "cpu", "gpu_name": ""}
 
-def get_config():
+async def get_config():
     if not os.path.exists(CONFIG_PATH) and os.path.exists(EXAMPLE_CONFIG_PATH):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         shutil.copy(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
-    try:
+        
+    def _read():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f: return json.load(f)
+        
+    try:
+        async with config_lock:
+            return await asyncio.to_thread(_read)
     except Exception as e: raise HTTPException(status_code=500, detail=f"读取配置失败: {str(e)}")
 
 async def restore_config():

@@ -255,8 +255,11 @@ export default {
             for (const task of selectedTasks.value) {
                 const steps = [];
                 if (!task.has_audio && task.has_video) steps.push("extract");
-                // 修复 Bug 2：允许用户重跑任务以覆盖旧资产
-                if (task.has_audio || steps.includes("extract")) steps.push("transcribe");
+                
+                // 如果用户想要全量翻译，且已有原声字幕，则静默跳过识别步骤
+                if (!(includeTranslation && task.has_original_srt)) {
+                    if (task.has_audio || steps.includes("extract")) steps.push("transcribe");
+                }
                 if (includeTranslation) steps.push("translate");
 
                 if (steps.length > 0) {

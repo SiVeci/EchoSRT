@@ -6,6 +6,7 @@ import shutil
 from fastapi import UploadFile, HTTPException
 from ..state import global_tasks_status
 from core.audio_extractor import extract_audio
+from .config_service import get_config
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
@@ -61,7 +62,7 @@ async def save_asset(file: UploadFile, asset_type: str, task_id: str):
         
     return {"task_id": task_id, "filename": file.filename, "message": f"{asset_type} 上传成功"}
 
-def get_download_file_path(task_id: str, type: str = "original"):
+async def get_download_file_path(task_id: str, type: str = "original"):
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if not os.path.exists(task_dir): raise HTTPException(status_code=404, detail="任务目录不存在")
         
@@ -69,8 +70,15 @@ def get_download_file_path(task_id: str, type: str = "original"):
     if os.path.exists(meta_path):
         with open(meta_path, "r", encoding="utf-8") as f: base_name = json.load(f).get("base_name", "output")
             
-    if type == "translated": target_file, out_name = os.path.join(task_dir, "translated.srt"), f"{base_name}_chs.srt"
-    else: target_file, out_name = os.path.join(task_dir, "original.srt"), f"{base_name}.srt"
+    if type == "translated": 
+        try:
+            config_data = await get_config()
+            lang_code = config_data.get("llm_settings", {}).get("target_language", "chs")
+        except Exception:
+            lang_code = "chs"
+        target_file, out_name = os.path.join(task_dir, "translated.srt"), f"{base_name}_{lang_code}.srt"
+    else: 
+        target_file, out_name = os.path.join(task_dir, "original.srt"), f"{base_name}.srt"
     
     if not os.path.exists(target_file): raise HTTPException(status_code=404, detail="请求的字幕文件尚未生成或不存在")
     return target_file, out_name

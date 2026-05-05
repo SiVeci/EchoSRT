@@ -14,7 +14,7 @@ async def execute_task(payload: dict = Body(...)):
 
 @router.get("/download/{task_id}")
 async def download_srt(task_id: str, type: str = "original"):
-    target_file, out_name = workspace_service.get_download_file_path(task_id, type)
+    target_file, out_name = await workspace_service.get_download_file_path(task_id, type)
     return FileResponse(target_file, media_type="text/plain", filename=out_name)
 
 @router.get("/task/{task_id}/assets")
