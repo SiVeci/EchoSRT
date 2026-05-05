@@ -29,13 +29,14 @@ except ImportError:
 
 def format_time(seconds: float) -> str:
     """将秒数(浮点数)转换为 SRT 标准时间戳 (HH:MM:SS,mmm)"""
-    hours = math.floor(seconds / 3600)
-    seconds %= 3600
-    minutes = math.floor(seconds / 60)
-    seconds %= 60
-    milliseconds = round((seconds - math.floor(seconds)) * 1000)
-    seconds = math.floor(seconds)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+    total_milliseconds = round(seconds * 1000)
+    hours = total_milliseconds // 3600000
+    remainder = total_milliseconds % 3600000
+    minutes = remainder // 60000
+    remainder %= 60000
+    secs = remainder // 1000
+    msecs = remainder % 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{msecs:03d}"
 
 def verbose_json_to_srt(response_data, use_words=False) -> str:
     """解析 verbose_json 格式数据，手动拼接成 SRT 字符串，支持说话人识别标签"""
@@ -277,3 +278,10 @@ def run_api_transcription(
             print(f"❌ 云端语音处理流程发生未知错误: {e}")
             traceback.print_exc() # 打印完整的错误调用堆栈，这是最重要的排查线索
             raise
+            
+    finally:
+        # [内存/句柄泄漏修复] 强制关闭自定义传入的 HTTP 客户端，释放底层 Socket 资源
+        try:
+            client_params["http_client"].close()
+        except Exception:
+            pass

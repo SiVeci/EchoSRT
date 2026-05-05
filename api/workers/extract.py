@@ -19,6 +19,13 @@ async def worker_extract_loop():
             global_tasks_status[task_id]["current_step"] = "extracting"
 
         try:
+            # [防呆] 流水线倒车清理：重新提取音频前，必须作废下游的旧识别与旧翻译产物
+            for old_asset in ["original.srt", "translated.srt"]:
+                asset_path = os.path.join(task_dir, old_asset)
+                if os.path.exists(asset_path):
+                    try: os.remove(asset_path)
+                    except Exception: pass
+                    
             video_files = [f for f in os.listdir(task_dir) if f.startswith("video.")]
             if not video_files:
                 raise Exception("缺少视频源文件，无法执行音频提取。请先上传视频。")

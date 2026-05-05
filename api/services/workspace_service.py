@@ -11,8 +11,14 @@ from ..ws_manager import manager
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
+def sanitize_task_id(task_id: str) -> str:
+    """彻底过滤路径穿透字符，仅保留最后的文件/文件夹名，防止遍历攻击"""
+    if not task_id:
+        return str(uuid.uuid4())
+    return os.path.basename(str(task_id).replace("\\", "/"))
+
 async def save_asset(file: UploadFile, asset_type: str, task_id: str):
-    if not task_id: task_id = str(uuid.uuid4())
+    task_id = sanitize_task_id(task_id)
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     os.makedirs(task_dir, exist_ok=True)
     
@@ -64,6 +70,7 @@ async def save_asset(file: UploadFile, asset_type: str, task_id: str):
     return {"task_id": task_id, "filename": file.filename, "message": f"{asset_type} 上传成功"}
 
 async def get_download_file_path(task_id: str, type: str = "original"):
+    task_id = sanitize_task_id(task_id)
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if not os.path.exists(task_dir): raise HTTPException(status_code=404, detail="任务目录不存在")
         
@@ -85,6 +92,7 @@ async def get_download_file_path(task_id: str, type: str = "original"):
     return target_file, out_name
 
 def get_single_task(task_id: str):
+    task_id = sanitize_task_id(task_id)
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if not os.path.exists(task_dir) or not os.path.isdir(task_dir):
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -126,6 +134,7 @@ def get_all_tasks():
     return sorted(tasks, key=lambda x: x["created_at"], reverse=True)
 
 def delete_task_workspace(task_id: str):
+    task_id = sanitize_task_id(task_id)
     if task_id in global_tasks_status:
         step = global_tasks_status[task_id].get("current_step")
         if step in ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]:

@@ -69,6 +69,11 @@ export const store = reactive({
 export const addLog = (message, type = "info") => {
     const time = new Date().toLocaleTimeString();
     store.logs.push({ time, message, type });
+    
+    // [防卡顿] 限制日志最大保留条数，防止处理超长音频时 Vue 响应式数组无限膨胀导致浏览器 OOM
+    if (store.logs.length > 1000) {
+        store.logs.shift();
+    }
 };
 
 // --- 通用 WebSocket 监视器 (支持复用与状态路由) ---

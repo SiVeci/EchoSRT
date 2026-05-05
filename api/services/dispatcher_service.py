@@ -8,7 +8,12 @@ from .config_service import test_proxy, config_lock
 async def dispatch_task(payload: dict):
     task_id = payload.get("task_id")
     if not task_id: raise HTTPException(status_code=400, detail="缺少 task_id")
-        
+    
+    # 彻底过滤路径穿透字符，防止恶意伪造
+    task_id = os.path.basename(str(task_id).replace("\\", "/"))
+    if not task_id: raise HTTPException(status_code=400, detail="无效的 task_id")
+    payload["task_id"] = task_id
+    
     steps = payload.get("steps", [])
     if not steps: raise HTTPException(status_code=400, detail="未指定执行步骤")
 

@@ -64,6 +64,12 @@ async def worker_transcribe_loop():
             global_tasks_status[task_id]["current_step"] = "transcribing"
 
         try:
+            # [防呆] 流水线倒车清理：重新识别原声前，必须作废下游的旧翻译产物
+            old_translated_path = os.path.join(task_dir, "translated.srt")
+            if os.path.exists(old_translated_path):
+                try: os.remove(old_translated_path)
+                except Exception: pass
+                
             audio_path = os.path.join(task_dir, "audio.wav")
             if not os.path.exists(audio_path):
                 raise Exception("缺少 audio.wav 文件，无法执行语音识别。")

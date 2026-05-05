@@ -2,14 +2,15 @@ import math
 
 def format_time(seconds: float) -> str:
     """将秒数(浮点数)转换为 SRT 标准时间戳 (HH:MM:SS,mmm)"""
-    hours = math.floor(seconds / 3600)
-    seconds %= 3600
-    minutes = math.floor(seconds / 60)
-    seconds %= 60
-    milliseconds = round((seconds - math.floor(seconds)) * 1000)
-    seconds = math.floor(seconds)
+    total_milliseconds = round(seconds * 1000)
+    hours = total_milliseconds // 3600000
+    remainder = total_milliseconds % 3600000
+    minutes = remainder // 60000
+    remainder %= 60000
+    secs = remainder // 1000
+    msecs = remainder % 1000
     
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{msecs:03d}"
 
 def generate_srt(segments, output_srt_path: str, progress_callback=None):
     """将识别片段格式化并写入 .srt 文件"""

@@ -149,74 +149,82 @@ async def run_llm_translation(
 
     client = AsyncOpenAI(**client_params)
 
-    if progress_callback:
-        progress_callback("📖 正在读取并解析原生字幕...")
+    try:
+        if progress_callback:
+            progress_callback("📖 正在读取并解析原生字幕...")
 
-    with open(input_srt_path, "r", encoding="utf-8") as f:
-        full_content = f.read()
-    
-    srt_blocks = parse_srt(full_content)
-    total_blocks = len(srt_blocks)
-    
-    if total_blocks == 0:
-        raise ValueError("未检测到任何有效字幕块，请检查字幕文件内容。")
-
-    msg = f"📊 共解析到 {total_blocks} 条字幕，准备分批请求模型..."
-    if progress_callback:
-        progress_callback(msg)
-    else:
-        print(msg)
-
-    with open(output_srt_path, "w", encoding="utf-8") as f:
-        f.write("")
-
-    success_count = 0
-    total_batches = (total_blocks + batch_size - 1) // batch_size
-    
-    semaphore = asyncio.Semaphore(concurrent_workers)
-    progress_state = {"completed": 0}
-    tasks = []
-    
-    for i in range(0, total_blocks, batch_size):
-        batch = srt_blocks[i : i + batch_size]
-        current_batch_num = (i // batch_size) + 1
+        with open(input_srt_path, "r", encoding="utf-8") as f:
+            full_content = f.read()
         
-        prev_context = ""
-        if i > 0:
-            prev_batch = srt_blocks[max(0, i - 3) : i]
-            prev_context = "\n\n".join(prev_batch)
+        srt_blocks = parse_srt(full_content)
+        total_blocks = len(srt_blocks)
         
-        tasks.append(
-            translate_batch(
-                client=client, 
-                model_name=model_name, 
-                system_prompt=full_system_prompt, 
-                batch_content=batch, 
-                batch_index=current_batch_num, 
-                total_batches=total_batches,
-                semaphore=semaphore,
-                progress_state=progress_state,
-                previous_context=prev_context,
-                progress_callback=progress_callback
-            )
-        )
+        if total_blocks == 0:
+            raise ValueError("未检测到任何有效字幕块，请检查字幕文件内容。")
+
+        msg = f"📊 共解析到 {total_blocks} 条字幕，准备分批请求模型..."
+        if progress_callback:
+            progress_callback(msg)
+        else:
+            print(msg)
+
+        with open(output_srt_path, "w", encoding="utf-8") as f:
+            f.write("")
+
+        success_count = 0
+        total_batches = (total_blocks + batch_size - 1) // batch_size
         
-    results = await asyncio.gather(*tasks)
-    
-    for idx, translated_chunk in results:
-        if translated_chunk:
-            with open(output_srt_path, "a", encoding="utf-8") as f:
-                f.write(translated_chunk + "\n\n")
+        semaphore = asyncio.Semaphore(concurrent_workers)
+        progress_state = {"completed": 0}
+        tasks = []
+        
+        for i in range(0, total_blocks, batch_size):
+            batch = srt_blocks[i : i + batch_size]
+            current_batch_num = (i // batch_size) + 1
             
-            batch_start = (idx - 1) * batch_size
-            batch_end = batch_start + batch_size
-            success_count += len(srt_blocks[batch_start:batch_end])
+            prev_context = ""
+            if i > 0:
+                prev_batch = srt_blocks[max(0, i - 3) : i]
+                prev_context = "\n\n".join(prev_batch)
+            
+            tasks.append(
+                translate_batch(
+                    client=client, 
+                    model_name=model_name, 
+                    system_prompt=full_system_prompt, 
+                    batch_content=batch, 
+                    batch_index=current_batch_num, 
+                    total_batches=total_batches,
+                    semaphore=semaphore,
+                    progress_state=progress_state,
+                    previous_context=prev_context,
+                    progress_callback=progress_callback
+                )
+            )
+            
+        results = await asyncio.gather(*tasks)
+        
+        for idx, translated_chunk in results:
+            if translated_chunk:
+                with open(output_srt_path, "a", encoding="utf-8") as f:
+                    f.write(translated_chunk + "\n\n")
+                
+                batch_start = (idx - 1) * batch_size
+                batch_end = batch_start + batch_size
+                success_count += len(srt_blocks[batch_start:batch_end])
 
-    finish_msg = f"🎉 翻译完毕！共成功处理 {success_count}/{total_blocks} 条字幕。"
-    if progress_callback:
-        progress_callback(finish_msg)
-    else:
-        print(finish_msg)
+        finish_msg = f"🎉 翻译完毕！共成功处理 {success_count}/{total_blocks} 条字幕。"
+        if progress_callback:
+            progress_callback(finish_msg)
+        else:
+            print(finish_msg)
+            
+    finally:
+        # [内存/句柄泄漏修复] 强制关闭并清理底层的 AsyncClient
+        try:
+            await client_params["http_client"].aclose()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     print("本脚本已重构为通用核心模块，请通过 WebUI 工作流或主程序调用。")
