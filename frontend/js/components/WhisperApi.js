@@ -100,6 +100,23 @@ export default {
                                 <el-input type="textarea" v-model="store.config.online_asr_settings.prompt" :rows="3" placeholder="在此输入引导词 (可选)"></el-input>
                             </el-form-item>
                             
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        网络超时设置
+                                        <el-tooltip content="左侧: 连接超时(秒)；右侧: 等待云端响应的最长超时(秒)。音频较长时请调大右侧数值以防止假死报错。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <el-input-number v-model="store.config.online_asr_settings.timeout_settings.connect" :min="3" :max="60" :step="1" style="width: 100px;"></el-input-number>
+                                    <span>/</span>
+                                    <el-input-number v-model="store.config.online_asr_settings.timeout_settings.read" :min="30" :max="3600" :step="30" style="width: 120px;"></el-input-number>
+                                    <span style="color: #909399; font-size: 13px;">秒</span>
+                                </div>
+                            </el-form-item>
+
                             <el-divider border-style="dashed" style="margin: 15px 0;"></el-divider>
 
                             <el-form-item>

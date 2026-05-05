@@ -131,6 +131,23 @@ export default {
                             <el-form-item>
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
+                                        网络超时设置
+                                        <el-tooltip content="左侧: 连接超时(秒)；右侧: 等待模型响应的最长超时(秒)。遇到极慢的模型时请调大右侧数值以防止假死报错。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <el-input-number v-model="store.config.llm_settings.timeout_settings.connect" :min="3" :max="60" :step="1" placeholder="连接" style="width: 100px;"></el-input-number>
+                                    <span>/</span>
+                                    <el-input-number v-model="store.config.llm_settings.timeout_settings.read" :min="30" :max="1800" :step="10" placeholder="读取" style="width: 120px;"></el-input-number>
+                                    <span style="color: #909399; font-size: 13px;">秒</span>
+                                </div>
+                            </el-form-item>
+
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
                                         System Prompt
                                         <el-tooltip content="控制大模型的翻译风格指令。前缀语言指令会自动生成，你可以在此定制附加的风格要求。" placement="top" trigger="click">
                                             <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>

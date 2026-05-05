@@ -7,6 +7,7 @@ from fastapi import UploadFile, HTTPException
 from ..state import global_tasks_status
 from core.audio_extractor import extract_audio
 from .config_service import get_config
+from ..ws_manager import manager
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
@@ -137,4 +138,5 @@ def delete_task_workspace(task_id: str):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"文件被占用或无法删除: {str(e)}")
     global_tasks_status.pop(task_id, None)
+    manager.task_states.pop(task_id, None)
     return {"message": "任务删除成功"}

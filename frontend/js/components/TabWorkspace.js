@@ -287,6 +287,10 @@ export default {
             store.logs.splice(0, store.logs.length);
             addLog(`👀 焦点已切换至监视任务: ${task.base_name}`, "info");
             
+            // 清空细粒度状态，防止 SPA 状态泄漏产生视觉残影
+            store.taskState.extractedTime = "";
+            store.taskState.downloadedMB = null;
+
             // 切断并重新连接 WS，绑定到新任务的输出流
             connectTaskMonitor(task.task_id, null, null);
 

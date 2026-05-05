@@ -63,7 +63,11 @@
     "batch_size": 50,
     "concurrent_workers": 3,
     "system_prompt": "",
-    "use_network_proxy": false
+    "use_network_proxy": false,
+    "timeout_settings": {
+      "connect": 10.0,
+      "read": 120.0
+    }
   },
   "online_asr_settings": {
     "provider": "openai",
@@ -75,6 +79,10 @@
     "translate": false,
     "speaker_labels": false,
     "word_timestamps": false,
-    "use_network_proxy": false
+    "use_network_proxy": false,
+    "timeout_settings": {
+      "connect": 15.0,
+      "read": 300.0
+    }
   }
 }

@@ -52,8 +52,8 @@ export const store = reactive({
         },
         vad_settings: { vad_filter: true },
         ffmpeg_settings: { audio_track: "0:a:0", start_time: "", end_time: "" },
-        llm_settings: { api_key: "", base_url: "https://api.openai.com/v1", model_name: "Pro/deepseek-ai/DeepSeek-V3.2", target_language: "zh", batch_size: 50, concurrent_workers: 3, system_prompt: "" },
-        online_asr_settings: { provider: "openai", base_url: "https://api.openai.com/v1", api_key: "", model_name: "whisper-1", language: null, prompt: "", translate: false, speaker_labels: false, word_timestamps: false }
+        llm_settings: { api_key: "", base_url: "https://api.openai.com/v1", model_name: "Pro/deepseek-ai/DeepSeek-V3.2", target_language: "zh", batch_size: 50, concurrent_workers: 3, system_prompt: "", use_network_proxy: false, timeout_settings: { connect: 10, read: 120 } },
+        online_asr_settings: { provider: "openai", base_url: "https://api.openai.com/v1", api_key: "", model_name: "whisper-1", language: null, prompt: "", translate: false, speaker_labels: false, word_timestamps: false, use_network_proxy: false, timeout_settings: { connect: 15, read: 300 } }
     },
 
     // --- 字典数据 (从后端拉取的下拉框选项) ---

@@ -140,16 +140,26 @@ def run_api_transcription(
     use_verbose_json = speaker_labels or word_timestamps
     req_format = "verbose_json" if use_verbose_json else "srt"
 
+    # 提取用户配置的超时时间，并做下限防呆保护
+    timeout_cfg = asr_config.get("timeout_settings", {})
+    try:
+        user_connect = max(float(timeout_cfg.get("connect", 15.0)), 3.0)
+        user_read = max(float(timeout_cfg.get("read", 300.0)), 30.0)
+    except (TypeError, ValueError):
+        user_connect, user_read = 15.0, 300.0
+        
+    # 组装精细化的 httpx Timeout 控制器
+    timeout_config = httpx.Timeout(connect=user_connect, read=user_read, write=60.0, pool=10.0)
+
     client_params = {
         "api_key": api_key,
         "base_url": base_url,
-        "timeout": 300.0,
         "max_retries": 2
     }
     if actual_use_proxy:
-        client_params["http_client"] = httpx.Client(proxy=proxy_url)
+        client_params["http_client"] = httpx.Client(proxy=proxy_url, timeout=timeout_config)
     else:
-        client_params["http_client"] = httpx.Client(proxy=None, trust_env=False)
+        client_params["http_client"] = httpx.Client(proxy=None, trust_env=False, timeout=timeout_config)
 
     client = OpenAI(**client_params)
 

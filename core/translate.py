@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import httpx
 import asyncio
@@ -44,6 +45,7 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
             )
 
             translated_text = completion.choices[0].message.content
+            translated_text = re.sub(r'<think>.*?</think>', '', translated_text, flags=re.DOTALL)
             translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
             
             progress_state["completed"] += 1
@@ -124,16 +126,26 @@ async def run_llm_translation(
     if not base_url:
         base_url = "https://api.openai.com/v1"
 
+    # 提取用户配置的超时时间，并做下限防呆保护
+    timeout_cfg = llm_config.get("timeout_settings", {})
+    try:
+        user_connect = max(float(timeout_cfg.get("connect", 10.0)), 3.0)
+        user_read = max(float(timeout_cfg.get("read", 120.0)), 30.0)
+    except (TypeError, ValueError):
+        user_connect, user_read = 10.0, 120.0
+        
+    # 组装精细化的 httpx Timeout 控制器
+    timeout_config = httpx.Timeout(connect=user_connect, read=user_read, write=20.0, pool=10.0)
+
     client_params = {
         "api_key": api_key, 
         "base_url": base_url,
-        "timeout": 120.0,
         "max_retries": 2
     }
     if actual_use_proxy:
-        client_params["http_client"] = httpx.AsyncClient(proxy=proxy_url)
+        client_params["http_client"] = httpx.AsyncClient(proxy=proxy_url, timeout=timeout_config)
     else:
-        client_params["http_client"] = httpx.AsyncClient(proxy=None, trust_env=False)
+        client_params["http_client"] = httpx.AsyncClient(proxy=None, trust_env=False, timeout=timeout_config)
 
     client = AsyncOpenAI(**client_params)
 
