@@ -46,6 +46,11 @@ async def worker_extract_loop():
 
         except Exception as e:
             print(f"[提取车间错误] {e}")
+            # 清道夫：如果出错，清理可能残留的 0 字节损坏文件
+            err_audio_path = os.path.join(task_dir, "audio.wav")
+            if os.path.exists(err_audio_path):
+                try: os.remove(err_audio_path)
+                except: pass
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
             await manager.send_json({"status": "error", "message": f"音频提取失败: {str(e)}"}, task_id)
         finally:

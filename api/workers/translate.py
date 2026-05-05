@@ -38,6 +38,11 @@ async def worker_translate_loop():
 
         except Exception as e:
             print(f"[翻译车间错误] {e}")
+            # 清道夫：如果出错，清理可能残留的损坏文件
+            err_translated_path = os.path.join(task_dir, "translated.srt")
+            if os.path.exists(err_translated_path):
+                try: os.remove(err_translated_path)
+                except: pass
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
             await manager.send_json({"status": "error", "message": f"智能翻译失败: {str(e)}"}, task_id)
         finally:

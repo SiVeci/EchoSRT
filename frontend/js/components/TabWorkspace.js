@@ -1,6 +1,6 @@
 const { ref, onMounted, watch } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, executeTask, testProxy } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -106,6 +106,44 @@ export default {
 
         onMounted(() => {
             fetchTasks();
+        });
+
+        // 智能状态监听：增量更新 (局部刷新)，只查变化的任务，杜绝全量扫盘
+        watch(() => store.pipelineStatus, async (newVal, oldVal) => {
+            if (!oldVal) return;
+            const tasksToRefresh = [];
+            for (const taskId in newVal) {
+                const currentStep = newVal[taskId]?.current_step;
+                const previousStep = oldVal[taskId]?.current_step;
+                
+                if (currentStep !== previousStep && ['pending_transcribe', 'transcribing', 'pending_translate', 'translating', 'completed', 'error'].includes(currentStep)) {
+                    tasksToRefresh.push(taskId);
+                }
+            }
+            
+            for (const taskId of tasksToRefresh) {
+                try {
+                    const latestData = await getTaskAssets(taskId);
+                    const targetIndex = taskList.value.findIndex(t => t.task_id === taskId);
+                    if (targetIndex !== -1) {
+                        // O(1) 局部精准更新，UI 绝对无闪烁
+                        taskList.value[targetIndex].has_video = latestData.has_video;
+                        taskList.value[targetIndex].has_audio = latestData.has_audio;
+                        taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
+                        taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
+                    }
+                    
+                    // 同步更新焦点任务资产，修复 Bug 1：实现下载按钮按阶段依次点亮
+                    if (taskId === store.taskId) {
+                        store.assets.hasVideo = latestData.has_video;
+                        store.assets.hasAudio = latestData.has_audio;
+                        store.assets.hasOriginalSrt = latestData.has_original_srt;
+                        store.assets.hasTranslatedSrt = latestData.has_translated_srt;
+                    }
+                } catch (e) {
+                    console.warn(`[局部刷新] 无法获取任务 ${taskId} 的最新资产状态`, e);
+                }
+            }
         });
 
         const handleSelectionChange = (val) => { selectedTasks.value = val; };

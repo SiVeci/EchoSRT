@@ -17,6 +17,10 @@ async def download_srt(task_id: str, type: str = "original"):
     target_file, out_name = workspace_service.get_download_file_path(task_id, type)
     return FileResponse(target_file, media_type="text/plain", filename=out_name)
 
+@router.get("/task/{task_id}/assets")
+def get_task_assets(task_id: str):
+    return workspace_service.get_single_task(task_id)
+
 @router.get("/tasks")
 def list_tasks():
     return workspace_service.get_all_tasks()

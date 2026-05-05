@@ -10,7 +10,7 @@ import GlobalSettings from './components/GlobalSettings.js';
 
 // 引入全局状态与网络请求
 import { store, addLog, connectTaskMonitor } from './store.js';
-import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus } from './api.js';
+import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo } from './api.js';
 
 const app = createApp({
     components: {
@@ -38,10 +38,11 @@ const app = createApp({
         onMounted(async () => {
             addLog("正在初始化应用，拉取后端配置...", "info");
             try {
-                const [configData, langData, modelData] = await Promise.all([
+                const [configData, langData, modelData, sysInfo] = await Promise.all([
                     getConfig(),
                     getLanguages(),
-                    getModels()
+                    getModels(),
+                    getSystemInfo()
                 ]);
                 
                 // 将后端拉取到的配置镜像同步到全局 Store
@@ -57,6 +58,7 @@ const app = createApp({
                 // 加载字典
                 store.dicts.languages = langData;
                 store.dicts.models = modelData;
+                store.systemInfo = sysInfo;
 
                 addLog("✅ 基础配置加载完成，就绪！", "success");
                 
@@ -79,7 +81,13 @@ const app = createApp({
                         if (state === 'pending_extract' || state === 'extracting') store.activeStep = 2;
                         else if (state === 'pending_transcribe' || state === 'transcribing') store.activeStep = 3;
                         else if (state === 'pending_translate' || state === 'translating') store.activeStep = 4;
-                        else if (state === 'completed') store.activeStep = 5;
+                        else if (state === 'completed') {
+                            if (store.assets.hasTranslatedSrt) store.activeStep = 5;
+                            else if (store.assets.hasOriginalSrt) store.activeStep = 4;
+                            else if (store.assets.hasAudio) store.activeStep = 3;
+                            else if (store.assets.hasVideo) store.activeStep = 2;
+                            else store.activeStep = 1;
+                        }
                         
                         store.isProcessing = (state !== 'completed' && state !== 'error');
                     }

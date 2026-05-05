@@ -10,6 +10,7 @@ async function fetchGet(endpoint) {
 }
 
 // --- 配置与字典接口 ---
+export const getSystemInfo = () => fetchGet('/api/system/info');
 export const getConfig = () => fetchGet('/api/config');
 export const updateConfig = async (config) => {
     const res = await fetch(`${API_BASE}/api/config`, {
@@ -108,6 +109,7 @@ export const executeTask = async (taskId, steps, config) => {
 };
 
 export const getTasks = () => fetchGet('/api/tasks');
+export const getTaskAssets = (taskId) => fetchGet(`/api/task/${taskId}/assets`);
 export const deleteTask = async (taskId) => {
     const res = await fetch(`${API_BASE}/api/task/${taskId}`, { method: "DELETE" });
     if (!res.ok) throw new Error("删除任务失败");

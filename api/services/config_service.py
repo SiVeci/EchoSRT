@@ -5,6 +5,7 @@ import urllib.request
 import urllib.error
 import socket
 import urllib.parse
+import subprocess
 from fastapi import HTTPException
 from faster_whisper import available_models
 
@@ -51,6 +52,18 @@ def set_global_proxy(system_settings: dict):
         for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"]: os.environ.pop(k, None)
         if not enable_global:
             print("[*] 全局代理总闸已关闭，恢复纯净直连模式。")
+
+def get_system_info():
+    if shutil.which("nvidia-smi"):
+        gpu_name = "NVIDIA GPU"
+        try:
+            result = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, check=False)
+            if result.returncode == 0 and result.stdout.strip():
+                gpu_name = result.stdout.strip().split('\n')[0]
+        except Exception:
+            pass
+        return {"device": "cuda", "gpu_name": gpu_name}
+    return {"device": "cpu", "gpu_name": ""}
 
 def get_config():
     if not os.path.exists(CONFIG_PATH) and os.path.exists(EXAMPLE_CONFIG_PATH):

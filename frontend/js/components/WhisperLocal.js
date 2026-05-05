@@ -5,6 +5,9 @@ export default {
     name: 'WhisperLocal',
     template: `
         <div>
+            <el-alert v-if="store.systemInfo?.device === 'cuda'" title="🚀 已检测到 NVIDIA GPU，当前处于 CUDA 硬件加速模式。" :description="'显卡型号: ' + store.systemInfo.gpu_name" type="success" show-icon style="margin-bottom: 20px;" :closable="false"></el-alert>
+            <el-alert v-else-if="store.systemInfo?.device === 'cpu'" title="🐢 未检测到受支持的 NVIDIA 显卡，已自动降级为 CPU 慢速计算模式。" description="推理可能会非常耗时，建议使用较小的模型 (如 tiny/base) 或切换到云端 API 引擎。" type="warning" show-icon style="margin-bottom: 20px;" :closable="false"></el-alert>
+
             <!-- 本地引擎：基础设置卡片 -->
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5; border-top: none;">
                 <template #header>

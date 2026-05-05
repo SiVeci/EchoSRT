@@ -3,6 +3,10 @@ from ..services import config_service
 
 router = APIRouter()
 
+@router.get("/system/info")
+def get_system_info():
+    return config_service.get_system_info()
+
 @router.get("/config")
 def get_config():
     return config_service.get_config()

@@ -109,6 +109,11 @@ async def worker_transcribe_loop():
 
         except Exception as e:
             print(f"[识别车间错误] {e}")
+            # 清道夫：如果出错，清理可能残留的损坏文件
+            err_srt_path = os.path.join(task_dir, "original.srt")
+            if os.path.exists(err_srt_path):
+                try: os.remove(err_srt_path)
+                except: pass
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
             await manager.send_json({"status": "error", "message": f"语音识别失败: {str(e)}"}, task_id)
         finally:

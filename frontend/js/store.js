@@ -32,6 +32,9 @@ export const store = reactive({
     // --- 全局日志系统 ---
     logs: [],
 
+    // --- 硬件系统信息 ---
+    systemInfo: { device: "unknown", gpu_name: "" },
+
     // --- 全局配置参数 (完整镜像后端的 config.json 结构) ---
     config: {
         system_settings: { network_proxy: "", enable_global_proxy: false },
