@@ -108,6 +108,12 @@ export const connectTaskMonitor = (taskId, onSuccess, onError) => {
             }
         } else if (data.status === "completed") {
             store.isProcessing = false;
+            
+            // 兜底处理：只要后端传了完成 message，就打印到控制台
+            if (data.message) {
+                addLog(data.message, "success");
+            }
+            
             if (onSuccess) onSuccess(data);
             ws.close();
             currentWs = null;
