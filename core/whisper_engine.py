@@ -6,6 +6,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from faster_whisper import WhisperModel
 from huggingface_hub import snapshot_download
+from faster_whisper.utils import _MODELS
 
 _cached_model = None
 _cached_model_params = None
@@ -51,9 +52,12 @@ def transcribe_audio(
         print(f"[*] 正在加载 Whisper 模型 ({model_size}) 到 {device.upper()} ({compute_type})...")
         
         # --- 多线程安全预下载逻辑 ---
-        repo_id = f"Systran/faster-whisper-{model_size}"
-        if "distil" in model_size:
-            repo_id = f"Systran/faster-distil-whisper-{model_size.replace('distil-', '')}"
+        if isinstance(_MODELS, dict):
+            repo_id = _MODELS.get(model_size, model_size)
+        else:
+            repo_id = f"Systran/faster-whisper-{model_size}"
+            if "distil" in model_size:
+                repo_id = f"Systran/faster-distil-whisper-{model_size.replace('distil-', '')}"
             
         # 处理 SOCKS5 远端 DNS 解析，防止 Hugging Face 被本地 DNS 阻断
         _dl_proxy = proxy_url

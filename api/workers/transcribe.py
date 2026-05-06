@@ -7,10 +7,13 @@ from ..ws_manager import manager
 from core.whisper_engine import transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
 from core.api_transcribe import run_api_transcription
+from faster_whisper.utils import _MODELS
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
 def get_hf_repo_id(model_size: str) -> str:
+    if isinstance(_MODELS, dict):
+        return _MODELS.get(model_size, model_size)
     if "distil" in model_size:
         return f"Systran/faster-distil-whisper-{model_size.replace('distil-', '')}"
     return f"Systran/faster-whisper-{model_size}"
