@@ -79,11 +79,17 @@ async def get_download_file_path(task_id: str, type: str = "original"):
         with open(meta_path, "r", encoding="utf-8") as f: base_name = json.load(f).get("base_name", "output")
             
     if type == "translated": 
+        lang_code = "chs"
         try:
-            config_data = await get_config()
-            lang_code = config_data.get("llm_settings", {}).get("target_language", "chs")
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta_data = json.load(f)
+                if "translated_language" in meta_data:
+                    lang_code = meta_data["translated_language"]
+                else:
+                    config_data = await get_config()
+                    lang_code = config_data.get("llm_settings", {}).get("target_language", "chs")
         except Exception:
-            lang_code = "chs"
+            pass
         target_file, out_name = os.path.join(task_dir, "translated.srt"), f"{base_name}_{lang_code}.srt"
     elif type == "audio":
         target_file, out_name = os.path.join(task_dir, "audio.wav"), f"{base_name}.wav"

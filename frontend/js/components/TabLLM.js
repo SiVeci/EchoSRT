@@ -1,6 +1,6 @@
 const { ref, computed } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask, uploadAsset, getLlmModels } from '../api.js';
+import { executeTask, uploadAsset, getLlmModels, updateConfig } from '../api.js';
 
 export default {
     name: 'TabLLM',
@@ -261,6 +261,9 @@ export default {
                 },
                 () => {}
             );
+
+            // 执行前单独触发落盘保存
+            try { await updateConfig(store.config); } catch (e) {}
 
             try {
                 await executeTask(store.taskId, ["translate"], store.config);

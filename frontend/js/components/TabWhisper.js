@@ -2,7 +2,7 @@ const { ref } = Vue;
 import WhisperLocal from './WhisperLocal.js';
 import WhisperApi from './WhisperApi.js';
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask } from '../api.js';
+import { executeTask, updateConfig } from '../api.js';
 
 export default {
     name: 'TabWhisper',
@@ -88,6 +88,9 @@ export default {
                 },
                 () => {}
             );
+
+            // 执行前单独触发落盘保存
+            try { await updateConfig(store.config); } catch (e) {}
 
             try {
                 await executeTask(store.taskId, ["transcribe"], store.config);

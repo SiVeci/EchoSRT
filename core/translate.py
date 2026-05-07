@@ -202,7 +202,11 @@ async def run_llm_translation(
                 )
             )
             
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for res in results:
+            if isinstance(res, Exception):
+                raise res
         
         for idx, translated_chunk in results:
             if translated_chunk:

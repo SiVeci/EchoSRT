@@ -103,7 +103,9 @@ async def update_config(payload: dict):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         def _save():
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f: json.dump(payload, f, indent=2, ensure_ascii=False)
+            temp_path = CONFIG_PATH + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f: json.dump(payload, f, indent=2, ensure_ascii=False)
+            os.replace(temp_path, CONFIG_PATH)
             
         async with config_lock:
             await asyncio.to_thread(_save)

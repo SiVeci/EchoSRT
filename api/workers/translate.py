@@ -3,6 +3,7 @@ import asyncio
 
 from ..state import q_translate, global_tasks_status
 from ..ws_manager import manager
+import json
 
 from core.translate import run_llm_translation
 
@@ -32,6 +33,16 @@ async def worker_translate_loop():
                 
             await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
             await run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback)
+
+            # [薛定谔修复] 将当时使用的目标语种固化到该任务专属的 meta.json 中
+            target_lang = llm_config.get("target_language", "zh")
+            meta_path = os.path.join(task_dir, "meta.json")
+            if os.path.exists(meta_path):
+                try:
+                    with open(meta_path, "r", encoding="utf-8") as f: meta_data = json.load(f)
+                    meta_data["translated_language"] = target_lang
+                    with open(meta_path, "w", encoding="utf-8") as f: json.dump(meta_data, f, ensure_ascii=False)
+                except Exception: pass
 
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
             await manager.send_json({"status": "completed", "step": "done", "message": "全量任务流水线完美收官！"}, task_id)

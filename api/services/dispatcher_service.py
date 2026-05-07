@@ -33,16 +33,6 @@ async def dispatch_task(payload: dict):
     if enable_proxy and proxy_url:
         await asyncio.to_thread(test_proxy, proxy_url) # 防止阻塞主事件循环
 
-    config_to_save = {k: v for k, v in payload.items() if k not in ["task_id", "steps"]}
-    
-    def _save_config():
-        os.makedirs("config", exist_ok=True)
-        with open("config/config.json", "w", encoding="utf-8") as f: json.dump(config_to_save, f, indent=2, ensure_ascii=False)
-        
-    async with config_lock:
-        try: await asyncio.to_thread(_save_config)
-        except Exception as e: print(f"[警告] 无法保存最新配置到 config/config.json: {e}")
-
     global_tasks_status[task_id] = { "steps": steps, "current_step": "pending", "config": payload }
 
     if "extract" in steps: global_tasks_status[task_id]["current_step"] = "pending_extract"; await q_extract.put((task_id, payload))

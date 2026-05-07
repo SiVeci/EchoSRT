@@ -10,7 +10,7 @@ import GlobalSettings from './components/GlobalSettings.js';
 
 // 引入全局状态与网络请求
 import { store, addLog, connectTaskMonitor, connectSystemDownloadMonitor } from './store.js';
-import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo, getDownloadStatus } from './api.js';
+import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo, getDownloadStatus, updateConfig } from './api.js';
 
 const app = createApp({
     components: {
@@ -203,6 +203,9 @@ const app = createApp({
                     ElementPlus.ElMessage.error(`工作流异常: ${error.message}`);
                 }
             );
+
+            // 执行前单独触发落盘保存
+            try { await updateConfig(store.config); } catch (e) {}
 
             try {
                 await executeTask(store.taskId, steps, store.config);

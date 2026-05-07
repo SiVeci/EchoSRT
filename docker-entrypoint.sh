@@ -29,8 +29,13 @@ if [ "$PUID" -ne 0 ] && [ "$PGID" -ne 0 ]; then
     groupadd -o -g "$PGID" appgroup 2>/dev/null || true
     useradd -o -u "$PUID" -g "$PGID" -s /bin/bash appuser 2>/dev/null || true
     
-    # 修正需要挂载出来的目录的所有权，保证宿主机用户有读写权限
-    chown -R "$PUID":"$PGID" /app/workspace /app/models /app/config
+    if [ "${SKIP_CHOWN:-false}" != "true" ]; then
+        # 浅层赋权：防止巨量模型碎片文件引发的深度递归导致的启动假死
+        chown "$PUID":"$PGID" /app/workspace /app/models /app/config
+        find /app/workspace /app/models /app/config -maxdepth 1 -exec chown "$PUID":"$PGID" {} +
+    else
+        echo "[*] Skipping chown based on SKIP_CHOWN environment variable."
+    fi
     
     # 使用 gosu 降权，以非 root 用户身份执行后续命令 (uvicorn)
     exec gosu appuser "$@"

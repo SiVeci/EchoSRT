@@ -1,6 +1,6 @@
 const { ref, onMounted, watch, nextTick } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -458,6 +458,9 @@ export default {
                     return; // 连通性测试不通过，直接阻断后续流水线分发
                 }
             }
+
+            // 解耦 I/O：批量派发前先发送一次配置保存，杜绝后端 I/O 风暴
+            try { await updateConfig(store.config); } catch (e) {}
 
             for (const task of selectedTasks.value) {
                 const steps = [];

@@ -1,6 +1,6 @@
 const { ref } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask, uploadAsset } from '../api.js';
+import { executeTask, uploadAsset, updateConfig } from '../api.js';
 
 export default {
     name: 'TabAudio',
@@ -148,6 +148,9 @@ export default {
                 },
                 () => {}
             );
+
+            // 执行前单独触发落盘保存
+            try { await updateConfig(store.config); } catch (e) {}
 
             try {
                 await executeTask(store.taskId, ["extract"], store.config);
