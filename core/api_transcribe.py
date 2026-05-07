@@ -7,25 +7,15 @@ import tempfile
 import traceback
 import httpx
 import uuid
+import wave
 
 # [侦错探针 1] 导入 openai 库本身，以便捕获其特定的异常类型
 import openai
 from openai import OpenAI, APIStatusError, APIConnectionError
 
-
-try:
-    import platform
-    import shutil
-    
-    # 将本地 ffmpeg 路径临时加入环境变量，避免 pydub 导入时找不到 ffmpeg 报 RuntimeWarning
-    system = platform.system()
-    local_ffmpeg_dir = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin")
-    if os.path.exists(local_ffmpeg_dir) and local_ffmpeg_dir not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = local_ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
-        
-    from pydub import AudioSegment
-except ImportError:
-    AudioSegment = None
+import platform
+import shutil
+import subprocess
 
 def format_time(seconds: float) -> str:
     """将秒数(浮点数)转换为 SRT 标准时间戳 (HH:MM:SS,mmm)"""
@@ -104,6 +94,33 @@ def parse_and_shift_srt(srt_content: str, offset_seconds: float, start_index: in
                     
     return "\n\n".join(shifted_blocks), current_idx
 
+def get_audio_duration(file_path: str, fallback_duration: float) -> float:
+    """获取音频的真实物理时长(秒)，防时间轴雪崩偏移"""
+    try:
+        with wave.open(file_path, 'rb') as wav_file:
+            return wav_file.getnframes() / float(wav_file.getframerate())
+    except Exception:
+        pass
+        
+    system = platform.system()
+    if system == "Windows":
+        ffprobe_cmd = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffprobe.exe")
+    else:
+        ffprobe_cmd = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffprobe")
+        
+    ffprobe_cmd = ffprobe_cmd if os.path.exists(ffprobe_cmd) else shutil.which("ffprobe")
+    if ffprobe_cmd:
+        try:
+            res = subprocess.run(
+                [ffprobe_cmd, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            )
+            duration = float(res.stdout.strip())
+            if duration > 0: return duration
+        except Exception:
+            pass
+    return fallback_duration
+
 def run_api_transcription(
     audio_path: str,
     output_srt_path: str,
@@ -168,16 +185,42 @@ def run_api_transcription(
     CHUNK_LIMIT_MB = 24.0
 
     if file_size_mb > CHUNK_LIMIT_MB:
-        if AudioSegment is None:
-            raise ImportError("音频文件超过 25MB，需要切片。请先在终端执行 'pip install pydub' 安装依赖库。")
         if progress_callback: 
-            progress_callback(f"⚠️ 音频超过 25MB (当前 {file_size_mb:.1f}MB)，正在使用 pydub 智能切片...")
+            progress_callback(f"⚠️ 音频超过 25MB (当前 {file_size_mb:.1f}MB)，正在使用 FFmpeg 物理切片 (防 OOM)...")
         else:
-            print(f"[*] 音频超过 25MB，正在切片...")
+            print(f"[*] 音频超过 25MB，正在进行防 OOM 物理切片...")
+            
+        chunk_length_sec = 10 * 60
+        chunk_length_ms = chunk_length_sec * 1000
+        task_uuid = uuid.uuid4().hex[:8]
+        temp_dir = tempfile.gettempdir()
+        segment_pattern = os.path.join(temp_dir, f"echo_srt_temp_chunk_{task_uuid}_%03d.wav")
         
-        audio = AudioSegment.from_file(audio_path)
-        chunk_length_ms = 10 * 60 * 1000
-        audio_chunks = [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+        system = platform.system()
+        if system == "Windows":
+            local_ffmpeg = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffmpeg.exe")
+        else:
+            local_ffmpeg = os.path.join(os.getcwd(), "bin", "ffmpeg", "bin", "ffmpeg")
+            
+        ffmpeg_cmd = local_ffmpeg if os.path.exists(local_ffmpeg) else shutil.which("ffmpeg")
+        if not ffmpeg_cmd:
+            raise FileNotFoundError("未找到 FFmpeg！请确保项目路径下存在 bin/ffmpeg 文件夹，或已在系统中安装 FFmpeg。")
+            
+        subprocess.run([
+            ffmpeg_cmd, "-y", "-i", audio_path,
+            "-f", "segment", "-segment_time", str(chunk_length_sec),
+            "-c", "copy", segment_pattern
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        audio_chunks = []
+        idx = 0
+        while True:
+            chunk_file = os.path.join(temp_dir, f"echo_srt_temp_chunk_{task_uuid}_{idx:03d}.wav")
+            if os.path.exists(chunk_file):
+                audio_chunks.append(chunk_file)
+                idx += 1
+            else:
+                break
     else:
         audio_chunks = [audio_path]
         chunk_length_ms = 0
@@ -187,23 +230,24 @@ def run_api_transcription(
     temp_dir = tempfile.gettempdir()
     task_uuid = uuid.uuid4().hex[:8]
 
+    current_offset = 0.0
+
     try:
         for idx, chunk in enumerate(audio_chunks):
-            is_file_path = isinstance(chunk, str)
-            if not is_file_path:
-                offset_seconds = (idx * chunk_length_ms) / 1000.0
-                temp_chunk_path = os.path.join(temp_dir, f"echo_srt_temp_chunk_{task_uuid}_{idx}.wav")
-                chunk.export(temp_chunk_path, format="wav")
-                chunk_to_process = temp_chunk_path
-                
+            offset_seconds = current_offset
+            chunk_to_process = chunk
+            
+            # 累加当前切片的真实物理时长作为下一个切片的起点 (防雪崩核心)
+            if chunk_length_ms > 0:
+                current_offset += get_audio_duration(chunk_to_process, fallback_duration=chunk_length_ms / 1000.0)
+
+            if len(audio_chunks) > 1:
                 task_type = "翻译" if translate_to_english else "识别"
                 if progress_callback: 
                     progress_callback(f"☁️ 正在处理并上传切片 {idx+1}/{len(audio_chunks)} ({task_type})...")
                 else:
                     print(f"[*] 正在上传切片 {idx+1}/{len(audio_chunks)}...")
             else:
-                offset_seconds = 0.0
-                chunk_to_process = chunk
                 if progress_callback:
                     task_type = "翻译 (Translate to English)" if translate_to_english else "识别"
                     progress_callback(f"☁️ 正在上传音频并等待云端 API {task_type} (取决于音频长度和网络速度)...")
@@ -248,7 +292,7 @@ def run_api_transcription(
                     final_srt_content += chunk_srt + "\n\n"
 
             finally:
-                if not is_file_path and os.path.exists(chunk_to_process):
+                if chunk_length_ms > 0 and os.path.exists(chunk_to_process):
                     try: os.remove(chunk_to_process)
                     except Exception: pass
 

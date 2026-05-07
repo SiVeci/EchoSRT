@@ -292,6 +292,13 @@ export default {
             store.config.transcribe_settings.max_new_tokens = parseNull(val.max_new_tokens);
             store.config.transcribe_settings.chunk_length = parseNull(val.chunk_length);
         }, { deep: true });
+        
+        // 修复 Bug 4: 清空下拉框引发的引擎空指针崩溃
+        watch(() => store.config.transcribe_settings.language, (val) => {
+            if (val === "") {
+                store.config.transcribe_settings.language = null;
+            }
+        });
 
         const formatBytes = (bytes) => {
             if (!bytes || bytes === 0) return '0 MB';

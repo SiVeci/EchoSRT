@@ -187,8 +187,8 @@ def get_models():
 
 def delete_model(model_id: str):
     for task in global_tasks_status.values():
-        if task.get("current_step") == "transcribing":
-            raise HTTPException(status_code=400, detail="当前有任务正在识别中，为防止崩溃，请等待识别完成后再执行删除！")
+        if task.get("current_step") in ["pending_transcribe", "transcribing"]:
+            raise HTTPException(status_code=400, detail="当前有任务正在识别队列中，为防止崩溃，请等待识别完成后再执行删除！")
             
     if get_current_model_size() == model_id:
         unload_model()
