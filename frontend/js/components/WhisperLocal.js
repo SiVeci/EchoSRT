@@ -1,6 +1,6 @@
 const { ref, computed, watch } = Vue;
-import { store } from '../store.js';
-import { getModels } from '../api.js';
+import { store, connectSystemDownloadMonitor } from '../store.js';
+import { getModels, deleteModel, downloadModel } from '../api.js';
 
 export default {
     name: 'WhisperLocal',
@@ -26,11 +26,19 @@ export default {
                         </template>
                         <el-select v-model="store.config.model_settings.model_size" placeholder="选择模型" filterable style="width: 100%;" @visible-change="handleVisibleChange">
                             <el-option-group v-for="group in store.dicts.models" :key="group.label" :label="group.label">
-                                <el-option v-for="model in group.options" :key="model.id" :label="model.id" :value="model.id">
+                                <el-option v-for="model in group.options" :key="model.id" :label="model.id" :value="model.id" :disabled="store.downloadingModels[model.id] !== undefined">
                                     <span style="float: left">{{ model.id }}</span>
-                                    <span style="float: right; color: #8492a6; font-size: 13px">
-                                        <el-tag v-if="model.downloaded" type="success" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px;">✅ 已下载</el-tag>
-                                        <span v-else>☁️ 云端</span>
+                                    <span style="float: right; color: #8492a6; font-size: 13px; display: flex; align-items: center; gap: 8px; height: 100%;">
+                                        <span v-if="store.downloadingModels[model.id] !== undefined" style="color: #409EFF; font-size: 12px; margin-right: 5px;">
+                                            <el-icon class="is-loading"><Loading /></el-icon>
+                                            正在下载，已获取 {{ store.downloadingModels[model.id] }} MB...
+                                        </span>
+                                        <template v-else>
+                                            <span v-if="model.downloaded" style="color: #909399; font-size: 12px; margin-right: 5px;">模型大小：{{ formatBytes(model.size_bytes) }}</span>
+                                            <el-tag v-if="model.downloaded" type="success" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px;">✅ 已下载</el-tag>
+                                            <el-button v-if="model.downloaded" type="danger" link style="padding: 0; height: auto;" @click.stop.prevent="handleDeleteModel(model)" title="删除此模型以释放空间"><el-icon><Delete /></el-icon></el-button>
+                                            <el-tag v-if="!model.downloaded" type="info" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px; cursor: pointer;" @click.stop.prevent="handleDownloadModel(model)" title="点击手动从后台下载该模型">☁️ 云端</el-tag>
+                                        </template>
                                     </span>
                                 </el-option>
                             </el-option-group>
@@ -285,6 +293,12 @@ export default {
             store.config.transcribe_settings.chunk_length = parseNull(val.chunk_length);
         }, { deep: true });
 
+        const formatBytes = (bytes) => {
+            if (!bytes || bytes === 0) return '0 MB';
+            if (bytes > 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        };
+
         const addTemperature = (index) => {
             const tempArray = store.config.transcribe_settings.temperature;
             let nextVal = tempArray[index] + 0.2;
@@ -303,10 +317,62 @@ export default {
             }
         };
 
+        const handleDeleteModel = async (model) => {
+            const sizeStr = model.size_bytes > 1024 * 1024 * 1024 
+                ? (model.size_bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+                : (model.size_bytes / (1024 * 1024)).toFixed(2) + ' MB';
+                
+            try {
+                await ElementPlus.ElMessageBox.confirm(
+                    `确定要彻底删除本地模型 <strong>[${model.id}]</strong> 吗？<br/>这将为您释放约 <strong style="color: #F56C6C;">${sizeStr}</strong> 的磁盘空间。`, 
+                    '清理模型存储', 
+                    { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: true }
+                );
+                
+                const loading = ElementPlus.ElLoading.service({ lock: true, text: '正在清理模型文件并释放显存...' });
+                try {
+                    await deleteModel(model.id);
+                    ElementPlus.ElMessage.success(`模型 [${model.id}] 删除成功，已释放 ${sizeStr} 空间！`);
+                    store.dicts.models = await getModels();
+                } catch (e) {
+                    ElementPlus.ElMessage.error(e.message);
+                } finally {
+                    loading.close();
+                }
+            } catch (e) {}
+        };
+
+        const handleDownloadModel = async (model) => {
+            try {
+                await ElementPlus.ElMessageBox.confirm(
+                    `确定要手动后台下载模型 <strong>[${model.id}]</strong> 吗？<br/>该模型体积约为 1~3 GB，视网络情况可能需要几分钟到十几分钟。<br/>下载期间您可以关闭或刷新网页，后台下载不会中断。`, 
+                    '确认下载', 
+                    { confirmButtonText: '开始下载', cancelButtonText: '取消', type: 'info', dangerouslyUseHTMLString: true }
+                );
+                
+                await downloadModel(model.id, store.config);
+                
+                store.downloadingModels[model.id] = 0;
+                connectSystemDownloadMonitor(
+                    model.id,
+                    async () => {
+                        ElementPlus.ElMessage.success(`模型 [${model.id}] 后台下载完成！`);
+                        store.dicts.models = await getModels();
+                    },
+                    async (err) => {
+                        ElementPlus.ElMessage.error(`下载失败或中断: ${err.message}`);
+                        store.dicts.models = await getModels();
+                    }
+                );
+            } catch (e) {
+                if (e !== 'cancel') ElementPlus.ElMessage.error(e.message || "请求下载失败");
+            }
+        };
+
         return { 
             store, pinnedLanguages, otherLanguages, 
-            suppressTokensStr, nullableFields,
-            addTemperature, removeTemperature, handleVisibleChange
+            suppressTokensStr, nullableFields, formatBytes,
+            addTemperature, removeTemperature, handleVisibleChange, handleDeleteModel, handleDownloadModel
         };
     }
 };

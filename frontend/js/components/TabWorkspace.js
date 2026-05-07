@@ -1,6 +1,6 @@
-const { ref, onMounted, watch } = Vue;
+const { ref, onMounted, watch, nextTick } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -59,7 +59,23 @@ export default {
                     </div>
                 </template>
                 
-                <el-table :data="taskList" style="width: 100%" height="320" v-loading="isLoadingTasks" :empty-text="'暂无任务记录'" @selection-change="handleSelectionChange">
+                <!-- 注意: 增加了 row-key="task_id" 才能保证 Vue 与 Sortable 共同操作时虚拟 DOM 不崩溃 -->
+                <el-table :data="taskList" row-key="task_id" style="width: 100%" height="320" v-loading="isLoadingTasks" :empty-text="'暂无任务记录'" @selection-change="handleSelectionChange">
+                    <el-table-column width="40" align="center">
+                        <template #default="scope">
+                            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                                <el-icon 
+                                    class="drag-handle" 
+                                    :class="{'is-disabled': isTaskRunning(scope.row.task_id)}" 
+                                    style="font-size: 18px;" 
+                                    title="按住拖拽进行排序">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"></path>
+                                    </svg>
+                                </el-icon>
+                            </div>
+                        </template>
+                    </el-table-column>
                     <el-table-column type="selection" width="50"></el-table-column>
                     <el-table-column prop="base_name" label="任务名称 (源文件名)" min-width="180" show-overflow-tooltip></el-table-column>
                     <el-table-column label="实时状态" width="130">
@@ -72,10 +88,51 @@ export default {
                     </el-table-column>
                     <el-table-column label="资产检查" width="200">
                         <template #default="scope">
-                            <el-tag size="small" :type="scope.row.has_video ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">视频</el-tag>
-                            <el-tag size="small" :type="scope.row.has_audio ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">音频</el-tag>
-                            <el-tag size="small" :type="scope.row.has_original_srt ? 'success' : 'info'" effect="plain" style="margin-right: 4px;">原声</el-tag>
-                            <el-tag size="small" :type="scope.row.has_translated_srt ? 'success' : 'info'" effect="plain">翻译</el-tag>
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <el-dropdown v-if="scope.row.has_video" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'video')">
+                                    <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">视频</el-tag>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                                <el-tag v-else size="small" type="info" effect="plain">视频</el-tag>
+                                
+                                <el-dropdown v-if="scope.row.has_audio" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'audio')">
+                                    <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">音频</el-tag>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                                <el-tag v-else size="small" type="info" effect="plain">音频</el-tag>
+                                
+                                <el-dropdown v-if="scope.row.has_original_srt" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'original')">
+                                    <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">原声</el-tag>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                                <el-tag v-else size="small" type="info" effect="plain">原声</el-tag>
+                                
+                                <el-dropdown v-if="scope.row.has_translated_srt" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'translated')">
+                                    <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">翻译</el-tag>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                                <el-tag v-else size="small" type="info" effect="plain">翻译</el-tag>
+                            </div>
                         </template>
                     </el-table-column>
                     <el-table-column label="焦点操作" width="160" fixed="right">
@@ -104,11 +161,60 @@ export default {
             finally { isLoadingTasks.value = false; }
         };
 
+        // 初始化拖拽引擎 (Sortable.js)
+        let sortableInstance = null;
+        const initSortable = () => {
+            const el = document.querySelector('.workspace-container .el-table__body-wrapper tbody');
+            if (!el || !window.Sortable) return;
+            if (sortableInstance) sortableInstance.destroy(); // 避免重复绑定内存泄漏
+
+            sortableInstance = Sortable.create(el, {
+                handle: '.drag-handle:not(.is-disabled)',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: async (evt) => {
+                    const { oldIndex, newIndex } = evt;
+                    if (oldIndex === newIndex || newIndex === undefined) return;
+
+                    // 防呆核心：计算锁定区 (空气墙) 边界
+                    let lastRunningIndex = -1;
+                    taskList.value.forEach((t, idx) => { if (isTaskRunning(t.task_id)) lastRunningIndex = idx; });
+
+                    // 越界拦截：严禁插队或跨越运行中的任务
+                    if (newIndex <= lastRunningIndex || oldIndex <= lastRunningIndex) {
+                        ElementPlus.ElMessage.warning("⚠️ 无法越过正在执行的任务！已开始的队列不支持插队。");
+                        // 强制清空再写入数组，使得 Vue 的虚拟 DOM 能把 Sortable 修改的真实 DOM 完美复原
+                        const clone = [...taskList.value];
+                        taskList.value = [];
+                        nextTick(() => { taskList.value = clone; });
+                        return;
+                    }
+
+                    // 合法拖拽，重组本地数组并向后端持久化
+                    const clone = [...taskList.value];
+                    const item = clone.splice(oldIndex, 1)[0];
+                    clone.splice(newIndex, 0, item);
+                    
+                    taskList.value = []; // 先清空一次同步 DOM
+                    nextTick(async () => {
+                        taskList.value = clone;
+                        try { await reorderTasks(clone.map(t => t.task_id)); } 
+                        catch (e) { ElementPlus.ElMessage.error("排序保存失败，即将恢复原状"); fetchTasks(); }
+                    });
+                }
+            });
+        };
+
         onMounted(() => {
             fetchTasks();
         });
         
         watch(() => store.refreshTasksTrigger, fetchTasks);
+
+        // 监听列表数据的变化，在 DOM 更新后重新挂载 Sortable
+        watch(() => taskList.value.length, () => {
+            nextTick(() => { initSortable(); });
+        });
 
         // 智能状态监听：增量更新 (局部刷新)，只查变化的任务，杜绝全量扫盘
         watch(() => store.pipelineStatus, async (newVal, oldVal) => {
@@ -167,6 +273,107 @@ export default {
                 'completed': '✔ 完毕收工', 'error': '✖ 发生错误'
             };
             return map[step] || step;
+        };
+
+        const getAssetCount = (row) => {
+            let count = 0;
+            if (row.has_video) count++;
+            if (row.has_audio) count++;
+            if (row.has_original_srt) count++;
+            if (row.has_translated_srt) count++;
+            return count;
+        };
+
+        const handleAssetCommand = async (cmd, row, assetType) => {
+            if (cmd === 'delete') {
+                try {
+                    const assetNameMap = { video: '视频', audio: '音频', original: '原声字幕', translated: '翻译字幕' };
+                    await ElementPlus.ElMessageBox.confirm(`确定要彻底删除该任务的 <strong>[${assetNameMap[assetType]}]</strong> 吗？<br/>此操作将释放硬盘空间且不可恢复！`, '删除资产', { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: true });
+                    await deleteTaskAsset(row.task_id, assetType);
+                    
+                    const latestData = await getTaskAssets(row.task_id);
+                    const targetIndex = taskList.value.findIndex(t => t.task_id === row.task_id);
+                    if (targetIndex !== -1) {
+                        taskList.value[targetIndex].has_video = latestData.has_video;
+                        taskList.value[targetIndex].has_audio = latestData.has_audio;
+                        taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
+                        taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
+                    }
+                    if (row.task_id === store.taskId) {
+                        store.assets.hasVideo = latestData.has_video;
+                        store.assets.hasAudio = latestData.has_audio;
+                        store.assets.hasOriginalSrt = latestData.has_original_srt;
+                        store.assets.hasTranslatedSrt = latestData.has_translated_srt;
+                    }
+                    ElementPlus.ElMessage.success(`${assetNameMap[assetType]}已成功删除`);
+                } catch (e) {
+                    if (e !== 'cancel') ElementPlus.ElMessage.error(e.message || "删除失败");
+                }
+            } else if (cmd === 'download') {
+                const url = `${window.location.origin}/api/download/${row.task_id}?type=${assetType}`;
+                if ('showSaveFilePicker' in window) {
+                    try {
+                        const headRes = await fetch(url, { method: 'HEAD' });
+                        let filename = row.base_name;
+                        const disposition = headRes.headers.get('content-disposition');
+                        if (disposition && disposition.includes('filename=')) {
+                            filename = decodeURIComponent(disposition.split('filename=')[1].replace(/["']/g, ''));
+                        } else if (disposition && disposition.includes('filename*=')) {
+                            filename = decodeURIComponent(disposition.split("''")[1]);
+                        } else {
+                            if (assetType === 'video') filename += '.mp4';
+                            else if (assetType === 'audio') filename += '.wav';
+                            else if (assetType === 'original') filename += '.srt';
+                            else if (assetType === 'translated') filename += '_translated.srt';
+                        }
+
+                        const handle = await window.showSaveFilePicker({ suggestedName: filename });
+                        const writable = await handle.createWritable();
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error("获取文件流失败");
+                        
+                        const contentLength = response.headers.get('content-length');
+                        const total = contentLength ? parseInt(contentLength, 10) : 0;
+                        let loaded = 0;
+                        const reader = response.body.getReader();
+                        
+                        const loading = ElementPlus.ElLoading.service({ lock: true, text: '⬇️ 正在保存至本地... [ 0% ]' });
+                        let lastTime = Date.now();
+                        let lastLoaded = 0;
+
+                        try {
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                await writable.write(value);
+                                loaded += value.length;
+                                
+                                const now = Date.now();
+                                if (now - lastTime > 500) {
+                                    const speed = (((loaded - lastLoaded) / ((now - lastTime) / 1000)) / 1024 / 1024).toFixed(1);
+                                    const percent = total ? Math.round((loaded / total) * 100) : '?';
+                                    const loadingTextEl = document.querySelector('.el-loading-text');
+                                    if (loadingTextEl) loadingTextEl.textContent = `⬇️ 正在保存至本地... [ ${percent}% ] (${speed} MB/s)`;
+                                    lastTime = now;
+                                    lastLoaded = loaded;
+                                }
+                            }
+                            await writable.close();
+                            loading.close();
+                            ElementPlus.ElMessage.success("✅ 文件保存成功！");
+                        } catch (err) {
+                            await writable.abort();
+                            loading.close();
+                            throw err;
+                        }
+                    } catch (err) {
+                        if (err.name !== 'AbortError') ElementPlus.ElMessage.error("下载意外中断: " + err.message);
+                    }
+                } else {
+                    window.open(url, "_blank");
+                    ElementPlus.ElNotification({ title: "下载指令已发送", message: "由于浏览器限制，请在原生下载管理器中查看进度。", type: "success" });
+                }
+            }
         };
 
         const isTaskRunning = (taskId) => {
@@ -365,6 +572,8 @@ export default {
             batchRun,
             getStatusType,
             getStatusText,
+            getAssetCount,
+            handleAssetCommand,
             store
         };
     }

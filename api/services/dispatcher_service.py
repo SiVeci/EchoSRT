@@ -2,7 +2,7 @@ import os
 import json
 from fastapi import HTTPException
 import asyncio
-from ..state import q_extract, q_transcribe, q_translate, global_tasks_status
+from ..state import q_extract, q_transcribe, q_translate, global_tasks_status, global_downloading_models
 from .config_service import test_proxy, config_lock
 
 async def dispatch_task(payload: dict):
@@ -20,6 +20,12 @@ async def dispatch_task(payload: dict):
     current_status = global_tasks_status.get(task_id, {}).get("current_step")
     if current_status in ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]:
         raise HTTPException(status_code=400, detail="该任务已在执行队列中，请勿重复下发。")
+
+    transcribe_settings = payload.get("transcribe_settings", {})
+    if "transcribe" in steps and transcribe_settings.get("engine", "local") == "local":
+        model_size = payload.get("model_settings", {}).get("model_size", "large-v2")
+        if model_size in global_downloading_models:
+            raise HTTPException(status_code=400, detail=f"当前选定的模型 [{model_size}] 正在后台下载中，为防止文件损坏，请等待其下载完成后再启动任务！")
 
     system_settings = payload.get("system_settings", {})
     proxy_url = system_settings.get("network_proxy", "").strip()

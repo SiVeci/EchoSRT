@@ -20,6 +20,12 @@ def unload_model():
         gc.collect()
         print("[*] Whisper 模型已从显存中卸载。")
 
+def get_current_model_size():
+    global _cached_model_params
+    if _cached_model_params:
+        return _cached_model_params[0]
+    return None
+
 def transcribe_audio(
     audio_path: str,
     model_settings: dict,

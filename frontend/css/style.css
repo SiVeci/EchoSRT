@@ -76,3 +76,23 @@ body {
 .box-card {
   overflow-x: hidden !important;
 }
+
+/* ==========================================
+   拖拽排序 (Sortable.js) 相关样式
+   ========================================== */
+.drag-handle {
+  cursor: grab;
+  color: #909399;
+  transition: color 0.2s;
+}
+.drag-handle:active:not(.is-disabled) {
+  cursor: grabbing;
+}
+.drag-handle.is-disabled {
+  cursor: not-allowed;
+  color: #dcdfe6;
+}
+.sortable-ghost {
+  opacity: 0.5;
+  background: #ecf5ff !important;
+}

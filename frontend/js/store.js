@@ -23,6 +23,9 @@ export const store = reactive({
         hasTranslatedSrt: false
     },
 
+    // --- 下载模型进度记录 ---
+    downloadingModels: {},
+
     // --- 跨组件的细粒度状态 (用于断线恢复) ---
     taskState: {
         extractedTime: "",
@@ -137,6 +140,27 @@ export const connectTaskMonitor = (taskId, onSuccess, onError) => {
             if (onError) onError(new Error(data.message));
             ws.close();
             currentWs = null;
+        }
+    };
+    return ws;
+};
+
+export const connectSystemDownloadMonitor = (modelId, onSuccess, onError) => {
+    const wsId = `sys_download_${modelId}`;
+    const ws = new WebSocket(`${WS_BASE}/ws/progress/${wsId}`);
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.status === "processing" && data.step === "downloading") {
+            store.downloadingModels[modelId] = data.downloaded_mb;
+        } else if (data.status === "completed") {
+            delete store.downloadingModels[modelId];
+            if (onSuccess) onSuccess(data);
+            ws.close();
+        } else if (data.status === "error") {
+            delete store.downloadingModels[modelId];
+            if (onError) onError(new Error(data.message));
+            ws.close();
         }
     };
     return ws;

@@ -9,8 +9,8 @@ import GlobalConsole from './components/GlobalConsole.js';
 import GlobalSettings from './components/GlobalSettings.js';
 
 // 引入全局状态与网络请求
-import { store, addLog, connectTaskMonitor } from './store.js';
-import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo } from './api.js';
+import { store, addLog, connectTaskMonitor, connectSystemDownloadMonitor } from './store.js';
+import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo, getDownloadStatus } from './api.js';
 
 const app = createApp({
     components: {
@@ -64,6 +64,23 @@ const app = createApp({
                 
                 // 探测并恢复意外中断的任务状态
                 await restoreActiveTask();
+                
+                // 探测并恢复后台下载状态
+                const dlStatus = await getDownloadStatus();
+                for (const modelId in dlStatus) {
+                    store.downloadingModels[modelId] = dlStatus[modelId].downloaded_mb || 0;
+                    connectSystemDownloadMonitor(
+                        modelId,
+                        async () => {
+                            ElementPlus.ElMessage.success(`模型 [${modelId}] 后台下载完成！`);
+                            store.dicts.models = await getModels();
+                        },
+                        async (err) => {
+                            ElementPlus.ElMessage.error(`模型 [${modelId}] 下载失败或中断: ${err.message}`);
+                            store.dicts.models = await getModels();
+                        }
+                    );
+                }
             } catch (e) {
                 addLog(`❌ 初始化失败: ${e.message}`, "error");
                 ElementPlus.ElMessage.error("无法连接到后端服务，请检查 app.py 是否启动。");

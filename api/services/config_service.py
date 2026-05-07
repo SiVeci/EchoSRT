@@ -10,6 +10,8 @@ import asyncio
 from fastapi import HTTPException
 from faster_whisper import available_models
 from faster_whisper.utils import _MODELS
+from ..state import global_tasks_status, global_downloading_models
+from core.whisper_engine import get_current_model_size, unload_model
 
 SUPPORTED_LANGUAGES = {
     "af": "afrikaans", "am": "amharic", "ar": "arabic", "as": "assamese", "az": "azerbaijani", 
@@ -125,6 +127,16 @@ def get_languages():
     langs = [{"code": k, "name": v.capitalize()} for k, v in SUPPORTED_LANGUAGES.items()]
     return sorted(langs, key=lambda x: x["name"])
 
+def get_folder_size(folder_path: str) -> int:
+    total_size = 0
+    if not os.path.exists(folder_path): return 0
+    for dirpath, _, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+    return total_size
+
 def get_models():
     models = available_models()
     
@@ -151,20 +163,123 @@ def get_models():
     def check_downloaded(m):
         repo_id = _MODELS.get(m, m) if isinstance(_MODELS, dict) else (f"Systran/faster-distil-whisper-{m.replace('distil-', '')}" if "distil" in m else f"Systran/faster-whisper-{m}")
         target_folder = os.path.join(os.getcwd(), download_root, f"models--{repo_id.replace('/', '--')}", "snapshots")
-        if not os.path.exists(target_folder): return False
+        if not os.path.exists(target_folder): return False, 0
         try:
             for hash_dir in os.listdir(target_folder):
                 hp = os.path.join(target_folder, hash_dir)
                 if os.path.isdir(hp) and (os.path.exists(os.path.join(hp, "model.bin")) or os.path.exists(os.path.join(hp, "model.safetensors"))):
-                    return True
+                    root_folder = os.path.join(os.getcwd(), download_root, f"models--{repo_id.replace('/', '--')}")
+                    return True, get_folder_size(root_folder)
         except Exception: pass
-        return False
+        return False, 0
+
+    def get_model_option(m):
+        is_dl, size_b = check_downloaded(m)
+        return {"id": m, "downloaded": is_dl, "size_bytes": size_b}
 
     return [
-        {"label": "✨ 常规多语言模型 (Standard)", "options": [{"id": m, "downloaded": check_downloaded(m)} for m in filtered_models if "distil" not in m and not m.endswith(".en")]},
-        {"label": "⚡ 蒸馏加速模型 (Distilled)", "options": [{"id": m, "downloaded": check_downloaded(m)} for m in filtered_models if "distil" in m]},
-        {"label": "🇬🇧 纯英文模型 (English Only)", "options": [{"id": m, "downloaded": check_downloaded(m)} for m in filtered_models if m.endswith(".en")]}
+        {"label": "✨ 常规多语言模型 (Standard)", "options": [get_model_option(m) for m in filtered_models if "distil" not in m and not m.endswith(".en")]},
+        {"label": "⚡ 蒸馏加速模型 (Distilled)", "options": [get_model_option(m) for m in filtered_models if "distil" in m]},
+        {"label": "🇬🇧 纯英文模型 (English Only)", "options": [get_model_option(m) for m in filtered_models if m.endswith(".en")]}
     ]
+
+def delete_model(model_id: str):
+    for task in global_tasks_status.values():
+        if task.get("current_step") == "transcribing":
+            raise HTTPException(status_code=400, detail="当前有任务正在识别中，为防止崩溃，请等待识别完成后再执行删除！")
+            
+    if get_current_model_size() == model_id:
+        unload_model()
+        
+    download_root = "models"
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                download_root = json.load(f).get("model_settings", {}).get("download_root", "models")
+    except Exception: pass
+    
+    repo_id = _MODELS.get(model_id, model_id) if isinstance(_MODELS, dict) else (f"Systran/faster-distil-whisper-{model_id.replace('distil-', '')}" if "distil" in model_id else f"Systran/faster-whisper-{model_id}")
+    target_folder = os.path.join(os.getcwd(), download_root, f"models--{repo_id.replace('/', '--')}")
+    
+    if os.path.exists(target_folder):
+        try: shutil.rmtree(target_folder)
+        except Exception as e: raise HTTPException(status_code=500, detail=f"删除文件失败，可能被占用: {str(e)}")
+    return {"message": f"模型 {model_id} 删除成功"}
+
+async def start_model_download(model_id: str, payload: dict):
+    if model_id in global_downloading_models:
+        raise HTTPException(status_code=400, detail="该模型已经在后台下载中！")
+        
+    for task in global_tasks_status.values():
+        if task.get("current_step") in ["pending_transcribe", "transcribing"]:
+            raise HTTPException(status_code=400, detail="当前有任务正在识别队列中，请等待识别完成后再执行手动下载！")
+
+    global_downloading_models[model_id] = {"status": "started", "downloaded_mb": 0.0}
+    
+    system_settings = payload.get("system_settings", {})
+    use_proxy = system_settings.get("use_proxy_for_model_download", False)
+    enable_global_proxy = system_settings.get("enable_global_proxy", False)
+    proxy_url = system_settings.get("network_proxy", "")
+    
+    actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
+    
+    _dl_proxy = proxy_url
+    if _dl_proxy and _dl_proxy.startswith("socks5://"):
+        _dl_proxy = _dl_proxy.replace("socks5://", "socks5h://", 1)
+        
+    proxies = {"http": _dl_proxy, "https": _dl_proxy} if actual_use_proxy else {"http": None, "https": None}
+    
+    download_root = "models"
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                download_root = json.load(f).get("model_settings", {}).get("download_root", "models")
+    except Exception: pass
+    
+    from huggingface_hub import snapshot_download
+    repo_id = _MODELS.get(model_id, model_id) if isinstance(_MODELS, dict) else (f"Systran/faster-distil-whisper-{model_id.replace('distil-', '')}" if "distil" in model_id else f"Systran/faster-whisper-{model_id}")
+    custom_model_dir = os.path.join(os.getcwd(), download_root)
+    target_folder = os.path.join(custom_model_dir, f"models--{repo_id.replace('/', '--')}")
+
+    from ..ws_manager import manager
+    
+    async def _download_task():
+        loop = asyncio.get_running_loop()
+        monitor_active = True
+        
+        async def _monitor():
+            try:
+                while monitor_active:
+                    current_size = await asyncio.to_thread(get_folder_size, target_folder)
+                    mb_size = current_size / (1024 * 1024)
+                    if model_id in global_downloading_models:
+                        global_downloading_models[model_id]["downloaded_mb"] = round(mb_size, 1)
+                    
+                    msg = {"status": "processing", "step": "downloading", "model_id": model_id, "downloaded_mb": round(mb_size, 1)}
+                    await manager.send_json(msg, f"sys_download_{model_id}")
+                    await asyncio.sleep(1)
+            except Exception: pass
+                
+        monitor_task = asyncio.create_task(_monitor())
+        try:
+            await loop.run_in_executor(None, lambda: snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies))
+            global_downloading_models.pop(model_id, None)
+            await manager.send_json({"status": "completed", "step": "done", "model_id": model_id, "message": f"模型 {model_id} 下载完成！"}, f"sys_download_{model_id}")
+        except Exception as e:
+            global_downloading_models.pop(model_id, None)
+            if os.path.exists(target_folder):
+                try: shutil.rmtree(target_folder)
+                except Exception: pass
+            await manager.send_json({"status": "error", "model_id": model_id, "message": f"网络异常，下载中断: {str(e)}"}, f"sys_download_{model_id}")
+        finally:
+            monitor_active = False
+            monitor_task.cancel()
+
+    asyncio.create_task(_download_task())
+    return {"message": "后台下载已启动", "model_id": model_id}
+
+def get_download_status():
+    return global_downloading_models
 
 def _fetch_openai_models(api_key: str, base_url: str, filter_keywords=None):
     if not api_key: raise HTTPException(status_code=400, detail="请先填写 API Key")

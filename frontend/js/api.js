@@ -44,6 +44,32 @@ export const testProxy = async (proxyUrl) => {
 export const getLanguages = () => fetchGet('/api/languages');
 export const getModels = () => fetchGet('/api/models');
 
+export const deleteModel = async (modelId) => {
+    const res = await fetch(`${API_BASE}/api/models/${encodeURIComponent(modelId)}`, { method: "DELETE" });
+    if (!res.ok) {
+        let errMsg = "删除失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
+export const downloadModel = async (modelId, config) => {
+    const res = await fetch(`${API_BASE}/api/models/${encodeURIComponent(modelId)}/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config)
+    });
+    if (!res.ok) {
+        let errMsg = "下载请求失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
+export const getDownloadStatus = () => fetchGet('/api/models/download_status');
+
 export const getLlmModels = async (apiKey, baseUrl) => {
     const res = await fetch(`${API_BASE}/api/llm/models?api_key=${encodeURIComponent(apiKey)}&base_url=${encodeURIComponent(baseUrl)}`);
     if (!res.ok) {
@@ -118,3 +144,23 @@ export const deleteTask = async (taskId) => {
 
 export const getTaskStatus = (taskId) => fetchGet(`/api/task/${taskId}/status`);
 export const getPipelineStatus = () => fetchGet(`/api/pipeline/status`);
+
+export const deleteTaskAsset = async (taskId, assetType) => {
+    const res = await fetch(`${API_BASE}/api/task/${taskId}/asset/${assetType}`, { method: "DELETE" });
+    if (!res.ok) {
+        let errMsg = "资产删除失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
+export const reorderTasks = async (taskIds) => {
+    const res = await fetch(`${API_BASE}/api/tasks/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskIds)
+    });
+    if (!res.ok) throw new Error("排序保存失败");
+    return await res.json();
+};

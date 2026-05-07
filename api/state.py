@@ -9,3 +9,6 @@ q_translate = asyncio.Queue()
 # 全局任务状态字典 (用于前端轮询看板)
 # key: task_id, value: {"steps": [...], "current_step": "...", "config": {...}}
 global_tasks_status: Dict[str, dict] = {}
+
+# 全局下载模型状态字典
+global_downloading_models: Dict[str, dict] = {}
