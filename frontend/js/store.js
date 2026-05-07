@@ -1,5 +1,5 @@
 const { reactive } = Vue;
-import { WS_BASE } from './api.js';
+import { WS_BASE, getModels } from './api.js';
 
 /* 全局状态管理 (轻量级 Pinia 替代) */
 export const store = reactive({
@@ -106,6 +106,9 @@ export const connectTaskMonitor = (taskId, onSuccess, onError) => {
             if (data.step === "downloading" && data.downloaded_mb !== undefined) {
                 store.taskState.downloadedMB = data.downloaded_mb;
             } else if (data.step === "transcribing") {
+                if (store.taskState.downloadedMB !== null) {
+                    getModels().then(res => { store.dicts.models = res; }).catch(() => {});
+                }
                 store.taskState.downloadedMB = null;
             }
 

@@ -9,6 +9,7 @@ import subprocess
 import asyncio
 from fastapi import HTTPException
 from faster_whisper import available_models
+from faster_whisper.utils import _MODELS
 
 SUPPORTED_LANGUAGES = {
     "af": "afrikaans", "am": "amharic", "ar": "arabic", "as": "assamese", "az": "azerbaijani", 
@@ -126,10 +127,43 @@ def get_languages():
 
 def get_models():
     models = available_models()
+    
+    # 动态去重逻辑：基于真实物理仓库过滤别名 (如 large-v3-turbo 和 turbo)
+    models_sorted_by_len = sorted(models, key=len, reverse=True)
+    seen_repos = set()
+    unique_models = set()
+    
+    for m in models_sorted_by_len:
+        repo_id = _MODELS.get(m, m) if isinstance(_MODELS, dict) else (f"Systran/faster-distil-whisper-{m.replace('distil-', '')}" if "distil" in m else f"Systran/faster-whisper-{m}")
+        if repo_id not in seen_repos:
+            seen_repos.add(repo_id)
+            unique_models.add(m)
+            
+    filtered_models = [m for m in models if m in unique_models]
+    
+    download_root = "models"
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                download_root = json.load(f).get("model_settings", {}).get("download_root", "models")
+    except Exception: pass
+
+    def check_downloaded(m):
+        repo_id = _MODELS.get(m, m) if isinstance(_MODELS, dict) else (f"Systran/faster-distil-whisper-{m.replace('distil-', '')}" if "distil" in m else f"Systran/faster-whisper-{m}")
+        target_folder = os.path.join(os.getcwd(), download_root, f"models--{repo_id.replace('/', '--')}", "snapshots")
+        if not os.path.exists(target_folder): return False
+        try:
+            for hash_dir in os.listdir(target_folder):
+                hp = os.path.join(target_folder, hash_dir)
+                if os.path.isdir(hp) and (os.path.exists(os.path.join(hp, "model.bin")) or os.path.exists(os.path.join(hp, "model.safetensors"))):
+                    return True
+        except Exception: pass
+        return False
+
     return [
-        {"label": "✨ 常规多语言模型 (Standard)", "options": [m for m in models if "distil" not in m and not m.endswith(".en")]},
-        {"label": "⚡ 蒸馏加速模型 (Distilled)", "options": [m for m in models if "distil" in m]},
-        {"label": "🇬🇧 纯英文模型 (English Only)", "options": [m for m in models if m.endswith(".en")]}
+        {"label": "✨ 常规多语言模型 (Standard)", "options": [{"id": m, "downloaded": check_downloaded(m)} for m in filtered_models if "distil" not in m and not m.endswith(".en")]},
+        {"label": "⚡ 蒸馏加速模型 (Distilled)", "options": [{"id": m, "downloaded": check_downloaded(m)} for m in filtered_models if "distil" in m]},
+        {"label": "🇬🇧 纯英文模型 (English Only)", "options": [{"id": m, "downloaded": check_downloaded(m)} for m in filtered_models if m.endswith(".en")]}
     ]
 
 def _fetch_openai_models(api_key: str, base_url: str, filter_keywords=None):

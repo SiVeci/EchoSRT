@@ -1,5 +1,6 @@
 const { ref, computed, watch } = Vue;
 import { store } from '../store.js';
+import { getModels } from '../api.js';
 
 export default {
     name: 'WhisperLocal',
@@ -23,9 +24,15 @@ export default {
                                 </el-tooltip>
                             </span>
                         </template>
-                        <el-select v-model="store.config.model_settings.model_size" placeholder="选择模型" filterable style="width: 100%;">
+                        <el-select v-model="store.config.model_settings.model_size" placeholder="选择模型" filterable style="width: 100%;" @visible-change="handleVisibleChange">
                             <el-option-group v-for="group in store.dicts.models" :key="group.label" :label="group.label">
-                                <el-option v-for="model in group.options" :key="model" :label="model" :value="model"></el-option>
+                                <el-option v-for="model in group.options" :key="model.id" :label="model.id" :value="model.id">
+                                    <span style="float: left">{{ model.id }}</span>
+                                    <span style="float: right; color: #8492a6; font-size: 13px">
+                                        <el-tag v-if="model.downloaded" type="success" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px;">✅ 已下载</el-tag>
+                                        <span v-else>☁️ 云端</span>
+                                    </span>
+                                </el-option>
                             </el-option-group>
                         </el-select>
                     </el-form-item>
@@ -289,11 +296,17 @@ export default {
             const tempArray = store.config.transcribe_settings.temperature;
             if (tempArray.length > 1) tempArray.splice(index, 1);
         };
+        
+        const handleVisibleChange = async (visible) => {
+            if (visible) {
+                try { store.dicts.models = await getModels(); } catch(e) {}
+            }
+        };
 
         return { 
             store, pinnedLanguages, otherLanguages, 
             suppressTokensStr, nullableFields,
-            addTemperature, removeTemperature
+            addTemperature, removeTemperature, handleVisibleChange
         };
     }
 };

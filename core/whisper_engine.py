@@ -71,14 +71,23 @@ def transcribe_audio(
             print(f"[*] 模型预下载检查因网络失败或被跳过，将尝试直接使用本地缓存。原因: {e}")
         # -----------------------------
         
-        _cached_model = WhisperModel(
-            model_size, 
-            device=device, 
-            compute_type=compute_type,
-            download_root=custom_model_dir,
-            local_files_only=True
-        )
-        _cached_model_params = current_params
+        try:
+            _cached_model = WhisperModel(
+                model_size, 
+                device=device, 
+                compute_type=compute_type,
+                download_root=custom_model_dir,
+                local_files_only=True
+            )
+            _cached_model_params = current_params
+        except Exception as e:
+            corrupted_folder = os.path.join(custom_model_dir, f"models--{repo_id.replace('/', '--')}")
+            if os.path.exists(corrupted_folder):
+                try: shutil.rmtree(corrupted_folder)
+                except Exception: pass
+            _cached_model = None
+            _cached_model_params = None
+            raise RuntimeError(f"模型文件损坏或加载失败，已自动清理缓存，请重新点击执行以触发重新下载。详细错误: {str(e)}")
 
     print(f"[*] 开始识别音频: {audio_path}")
     
