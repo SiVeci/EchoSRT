@@ -8,9 +8,16 @@ PGID=${PGID:-0}
 mkdir -p /app/workspace /app/models /app/config
 
 # [兜底策略] 如果用户挂载了空的 config 目录，导致配置和模板双双丢失，则从安全备份中恢复
-if [ ! -f "/app/config/config.json" ]; then
+if [ ! -f "/app/config/config.example.json" ]; then
     if [ -f "/app/config.example.json" ]; then
-        cp /app/config.example.json /app/config/config.json
+        cp /app/config.example.json /app/config/config.example.json
+        echo "[*] Docker entrypoint: restored config.example.json from backup."
+    fi
+fi
+
+if [ ! -f "/app/config/config.json" ]; then
+    if [ -f "/app/config/config.example.json" ]; then
+        cp /app/config/config.example.json /app/config/config.json
         echo "[*] Docker entrypoint: initialized default config.json from backup."
     fi
 fi
