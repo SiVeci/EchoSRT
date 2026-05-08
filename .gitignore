@@ -47,3 +47,5 @@ env/
 .idea/
 *.log
 *.tmp
+
+.clinerules

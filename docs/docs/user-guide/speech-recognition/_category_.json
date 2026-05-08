@@ -1,0 +1,9 @@
+{
+  "label": "语音识别",
+  "position": 3,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "description": "EchoSRT 双引擎语音识别：本地 faster-whisper 与云端 OpenAI 兼容 ASR API"
+  }
+}

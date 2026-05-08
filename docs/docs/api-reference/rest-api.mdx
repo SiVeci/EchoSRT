@@ -1,0 +1,136 @@
+---
+sidebar_position: 1
+title: REST API
+description: 完整的 REST API 端点文档
+---
+
+# REST API 参考
+
+EchoSRT 所有 HTTP 接口基于 FastAPI 构建，前端通过 `api.js` 中的封装函数调用。
+
+---
+
+## 配置 API
+
+### GET `/api/config`
+获取当前完整配置。
+
+**响应**: `{ system_settings, transcribe_settings, llm_settings, audio_settings }`
+
+### POST `/api/config`
+更新配置。
+
+**请求体**: 完整或部分 config JSON
+
+### POST `/api/config/restore`
+重置为 `config.example.json` 的默认配置。
+
+---
+
+## 任务 API
+
+### POST `/api/upload/{asset_type}`
+上传文件（video / audio / srt）。
+
+**路径参数**: `asset_type` = `video` | `audio` | `srt`
+**表单字段**: `file` (UploadFile), `task_id` (可选 str)
+
+**响应**: `{ task_id, filename, message }`
+
+### POST `/api/task/execute`
+触发任务执行。
+
+**请求体**:
+```json
+{
+  "task_id": "abc123",
+  "task_type": "transcribe",
+  "source_task_id": null,
+  "config": { "language": "zh", "engine_type": "local" }
+}
+```
+
+**响应**: `{ task_id, status }`
+
+### GET `/api/download/{task_id}?type=original`
+下载产物文件。
+
+**查询参数**: `type` = `original` | `translated`
+
+**响应**: `FileResponse` (SRT 或 WAV 文件)
+
+### GET `/api/task/{task_id}/assets`
+获取单个任务的资产信息。
+
+### GET `/api/tasks`
+列出所有任务。
+
+**响应**: `[{ task_id, task_name, task_type, current_step, assets, config }]`
+
+### DELETE `/api/task/{task_id}`
+删除单个任务的工作目录。
+
+### DELETE `/api/task/{task_id}/asset/{asset_type}`
+删除任务下的特定资产。
+
+### POST `/api/tasks/reorder`
+批量调整任务排序。
+
+**请求体**: `["task_id_1", "task_id_2", ...]`
+
+---
+
+## 模型 API
+
+### GET `/api/models`
+获取已下载的 Whisper 模型列表。
+
+### DELETE `/api/models/{model_id}`
+删除指定模型。
+
+### POST `/api/models/{model_id}/download`
+触发模型下载。
+
+### GET `/api/models/download_status`
+获取当前模型下载进度。
+
+---
+
+## LLM / ASR 模型发现
+
+### GET `/api/llm/models?api_key=...&base_url=...`
+从 API 提供商拉取可用 LLM 模型列表。
+
+### GET `/api/asr/models?api_key=...&base_url=...`
+从 API 提供商拉取可用 ASR 模型列表。
+
+---
+
+## 系统
+
+### GET `/api/system/info`
+获取系统信息（OS, Python 版本, FFmpeg 可用性, CUDA 状态等）。
+
+### GET `/api/languages`
+获取支持的语言字典。
+
+### POST `/api/proxy/test`
+测试代理连通性。
+
+**请求体**: `{ "proxy_url": "socks5://127.0.0.1:1080" }`
+
+---
+
+## WebSocket
+
+### WS `/ws/progress/{task_id}`
+实时任务进度推送。
+
+详见 [WebSocket 通信](../architecture/websocket) 文档。
+
+---
+
+## 相关文档
+
+- [WebSocket 通信](../architecture/websocket) — 实时推送协议
+- [流水线调度](../architecture/pipeline) — 任务执行流程

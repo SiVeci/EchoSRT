@@ -1,0 +1,161 @@
+---
+sidebar_position: 2
+---
+
+# 🎵 音频提取
+
+EchoSRT 使用 FFmpeg 作为音频提取引擎，支持从视频文件中提取指定时间段的音频并自动转码为 16kHz 单声道 WAV 格式，确保与 Whisper 模型的输入要求完全匹配。
+
+---
+
+## 提取流程
+
+```
+┌──────────┐    FFmpeg     ┌──────────────────┐
+│ 视频文件  │ ───────────→  │ audio.wav        │
+│ .mp4/mkv │  提取 + 重采样  │ 16kHz / mono     │
+│ .mov/avi │               │ PCM 16-bit LE     │
+└──────────┘               └──────────────────┘
+```
+
+核心参数硬编码在 `core/audio_extractor.py` 的 `extract_audio()` 函数中，确保输出始终符合 Whisper 的最佳输入规格。
+
+## 配置参数
+
+在 **🎵 音频提取** 标签页或 `config.json` 中配置：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `audio_track` | string | `"0:a:0"` | FFmpeg 流选择器。`a` 表示音频流。 |
+| `start_time` | string | `""` | 起始时间。格式 `HH:MM:SS` 或纯秒数。留空从头开始。 |
+| `end_time` | string | `""` | 结束时间。格式 `HH:MM:SS` 或纯秒数。留空到结尾。 |
+
+### 音频流选择器语法
+
+```
+输入文件索引:流类型:流索引
+    0     :   a  :  0
+```
+
+常见用法：
+
+| 选择器 | 含义 |
+|--------|------|
+| `0:a:0` | 第一个输入文件的第一个音频流（默认） |
+| `0:a:1` | 第一个输入文件的第二个音频流 |
+| `0:a` | 第一个输入文件的所有音频流（不推荐） |
+
+> 💡 **多音轨视频**：如果你的视频包含评论音轨或多语言音轨，调整第二个数字即可切换。
+
+## 提取参数详解
+
+### 固定输出格式
+
+```python
+# core/audio_extractor.py 核心逻辑
+cmd = ["ffmpeg", "-y"]
+if start_time: cmd += ["-ss", start_time]
+if end_time:   cmd += ["-to", end_time]
+cmd += [
+    "-i", input_path,
+    "-vn",              # 丢弃视频流
+    "-acodec", "pcm_s16le",  # PCM 16-bit 小端序
+    "-ar", "16000",     # 采样率 16kHz
+    "-ac", "1",         # 单声道
+    output_path
+]
+```
+
+| FFmpeg 参数 | 值 | 说明 |
+|-------------|-----|------|
+| `-vn` | — | 丢弃视频流，仅处理音频 |
+| `-acodec pcm_s16le` | PCM 16-bit LE | 无损 WAV 编码，Whisper 原生支持 |
+| `-ar 16000` | 16 kHz | Whisper 模型训练时的标准采样率 |
+| `-ac 1` | Mono | 单声道，减少不必要的计算开销 |
+
+### 起始/结束时间的精确控制
+
+`-ss` 放在 `-i` 之前可使用 FFmpeg 的 **关键帧快速定位**，大幅提升提取速度。但对于精确切帧需求仍可能产生 ±1 关键帧间隔的偏差（通常在毫秒级）。
+
+## 音频预处理（上传时）
+
+当用户直接上传音频文件时，系统会先将文件保存为临时文件，再调用同一 `extract_audio()` 函数进行标准化重采样。这确保了无论原始音频是什么格式，最终进入 Whisper 的都是统一规格的音频：
+
+```python
+# api/services/workspace_service.py — save_asset()
+if asset_type == "audio":
+    temp_audio_path = os.path.join(task_dir, f"temp_upload_{uuid}.{ext}")
+    await asyncio.to_thread(_save_file, file.file, temp_audio_path)
+    try:
+        await asyncio.to_thread(extract_audio, temp_audio_path, save_path)
+    finally:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
+```
+
+### 支持的输入格式
+
+通过上传时触发 FFmpeg 转码，几乎支持所有常见音频格式：
+
+- **无损**: WAV, FLAC, AIFF, ALAC
+- **有损**: MP3, AAC, M4A, OGG, WMA, OPUS
+- **容器**: MKV (音频轨道), WebM
+
+## 高级用法
+
+### 仅处理视频的某一段
+
+如果你只需要给视频的某一片段配字幕：
+
+```json
+{
+  "ffmpeg_settings": {
+    "start_time": "00:15:30",
+    "end_time": "00:45:00"
+  }
+}
+```
+
+生成的 SRT 时间码将相对于提取起点（即字幕从 `00:00:00` 开始）。如果需要保持原始时间码，需要手动偏移所有时间戳。
+
+### 多音轨双语字幕
+
+1. 先用 `0:a:0` 提取第一条音轨，完成识别与翻译
+2. 再用 `0:a:1` 提取第二天音轨，再次识别
+3. 手动合并两条 SRT 或使用翻译功能对齐
+
+## 故障排除
+
+<details>
+<summary>Q: 提示 "FFmpeg 未找到"？</summary>
+
+确保 FFmpeg 已安装并在 PATH 中：
+
+```bash
+ffmpeg -version
+# ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
+```
+
+Linux 安装：`sudo apt install ffmpeg`
+macOS 安装：`brew install ffmpeg`
+</details>
+
+<details>
+<summary>Q: 提取速度很慢？</summary>
+
+- `-ss` 放在 `-i` 之前以使用快速关键帧定位
+- 对于长视频，使用 `-c copy` 流复制（但无法同时进行重采样）
+- 大型视频考虑先使用 FFmpeg 预裁剪，再上传
+</details>
+
+<details>
+<summary>Q: 音频提取后文件巨大？</summary>
+
+16kHz/mono WAV 的理论码率为：
+
+```
+16,000 samples/s × 16 bits/sample × 1 channel = 256 kbps = 32 KB/s
+```
+
+1 小时音频 ≈ 112 MB。这是预期行为——PCM WAV 是无损无压缩格式。若需节省空间，可在用完 `audio.wav` 后手动删除该资产。
+</details>

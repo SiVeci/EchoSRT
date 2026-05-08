@@ -1,0 +1,303 @@
+---
+sidebar_position: 4
+---
+
+# 🌍 LLM 翻译
+
+EchoSRT 集成 LLM（大语言模型）实现字幕翻译，支持任意 OpenAI 兼容的 Chat Completions API，将 `original.srt` 翻译为目标语言并输出 `translated.srt`。翻译引擎支持异步并发批量处理，可在保持字幕时间轴完整的前提下高效翻译长视频字幕。
+
+---
+
+## 翻译架构
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    core/translate.py                             │
+│                                                                  │
+│  run_llm_translation()  ─── 核心调度函数                         │
+│  │                                                               │
+│  ├─ parse_srt()          ─── 解析 SRT 为独立字幕块              │
+│  ├─ translate_batch()    ─── 异步并发翻译单个批次                │
+│  └─ asyncio.gather()     ─── N 个 Worker 并行处理全部分批        │
+│                                                                  │
+│  输入: original.srt    →    输出: translated.srt                │
+│  模型: OpenAI / DeepSeek / Claude / Ollama / ...                │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## 翻译流程详解
+
+### 第一阶段：SRT 解析
+
+```python
+def parse_srt(content: str) -> list:
+    """
+    将 SRT 内容解析为独立的字幕块列表
+    每个元素是一个完整的 SRT 块（序号 + 时间轴 + 文本）
+    """
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
+    blocks = content.split('\n\n')
+    return [b.strip() for b in blocks if b.strip()]
+```
+
+解析结果示例：`['1\n00:00:01,000 --> 00:00:04,000\nHello world', '2\n00:00:05,000 --> ...', ...]`
+
+### 第二阶段：分批与上下文注入
+
+```python
+for i in range(0, total_blocks, batch_size):
+    batch = srt_blocks[i : i + batch_size]      # 每批 batch_size 条字幕
+
+    # 注入上一批原文作为上下文参考（但禁止翻译）
+    prev_context = ""
+    if i > 0:
+        prev_batch = srt_blocks[max(0, i - 3) : i]  # 取最后 3 条原文
+        prev_context = "\n\n".join(prev_batch)
+```
+
+每批 Prompt 结构：
+
+```
+【以下是上一段原文结尾，仅供上下文衔接参考，🚫禁止翻译该部分🚫】：
+{prev_context}
+
+====================
+
+【👇请严格按照原格式，正式翻译以下字幕片段👇】：
+{batch_content}
+```
+
+### 第三阶段：异步并发翻译
+
+```python
+semaphore = asyncio.Semaphore(concurrent_workers)     # 并发控制
+
+async def translate_batch(client, model_name, system_prompt, ...):
+    async with semaphore:
+        completion = await client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=1.0,
+            max_tokens=4096,
+            stream=False
+        )
+        # 清洗 DeepSeek R1 思考标签
+        translated_text = re.sub(r'<think>.*?</think>', '', translated_text, flags=re.DOTALL)
+        translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
+
+# 全部批次同时发起，由 Semaphore 限制并发数
+results = await asyncio.gather(*tasks, return_exceptions=True)
+```
+
+### 第四阶段：结果合并写入
+
+按 `batch_index` 排序后追加写入 `translated.srt`：
+
+```python
+for idx, translated_chunk in sorted(results):
+    if translated_chunk:
+        with open(output_srt_path, "a", encoding="utf-8") as f:
+            f.write(translated_chunk + "\n\n")
+```
+
+## 配置参数
+
+在 **🤖 LLM 翻译** 标签页或 `config.json` 中配置：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `api_key` | string | `""` | API 密钥（必填） |
+| `base_url` | string | `"https://api.openai.com/v1"` | API 基础 URL |
+| `model_name` | string | `"Pro/deepseek-ai/DeepSeek-V3.2"` | 模型名称 |
+| `target_language` | string | `"zh"` | 目标语言代码（ISO 639-1） |
+| `batch_size` | int | `50` | 每批发送的字幕条数（1-200） |
+| `concurrent_workers` | int | `3` | 并发 Worker 数（1-10） |
+| `system_prompt` | string | 见下方 | 自定义翻译风格 Prompt |
+| `use_network_proxy` | bool | `false` | 是否使用代理连接 API |
+
+### 超时设置
+
+```json
+{
+  "llm_config": {
+    "timeout_settings": {
+      "connect": 10.0,
+      "read": 120.0
+    }
+  }
+}
+```
+
+| 参数 | 默认值 | 下限 | 说明 |
+|------|--------|------|------|
+| `connect` | `10.0` | 3.0 秒 | TCP 握手超时 |
+| `read` | `120.0` | 30.0 秒 | 等待 LLM 响应的超时 |
+
+### 默认 System Prompt
+
+```python
+DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
+1. **自然流畅**：符合目标语言母语者的表达习惯。
+2. **专业严谨**：准确翻译专有名词和术语。
+3. **结合语境**：根据前后文调整语气和用词。"""
+```
+
+### 完整 System Prompt 组装
+
+实际发送给 LLM 的 system prompt 是三部分拼接：
+
+```
+[固定角色 + 目标语言声明]
+你是一位精通各国文化的专业影视字幕翻译。
+任务：将用户提供的 SRT 字幕片段翻译成【简体中文】。
+
+[固定格式死命令]
+### 🚫 格式死命令：
+1. **保留原文结构**：这是字幕片段，不要合并，不要遗漏。
+2. **保留时间轴**：所有时间戳（如 00:00:01,000 --> ...）必须原样保留，不得修改。
+3. **只输出结果**：不要加"好的"、"片段翻译如下"等废话，直接输出 SRT 格式文本。
+
+[自定义风格 Prompt (用户可编辑)]
+### 🎯 风格要求：
+1. **自然流畅**：符合目标语言母语者的表达习惯。
+2. **专业严谨**：准确翻译专有名词和术语。
+3. **结合语境**：根据前后文调整语气和用词。
+```
+
+### 响应清洗
+
+LLM 返回的文本会经过多层清洗，防止污染 SRT：
+
+- `re.sub(r'<think>.*?</think>', ...)` — 移除 DeepSeek R1 的思考标签
+- `replace("```srt", "").replace("```", "")` — 移除 Markdown 代码块标记
+
+## 支持的目标语言
+
+目标语言通过 ISO 639-1 代码指定，完整列表定义在 `api/services/config_service.py` 的 `SUPPORTED_LANGUAGES` 字典中：
+
+| 代码 | 语言 | 代码 | 语言 |
+|------|------|------|------|
+| `zh` | 简体中文 | `ja` | 日本語 |
+| `en` | English | `ko` | 한국어 |
+| `fr` | Français | `de` | Deutsch |
+| `es` | Español | `pt` | Português |
+| `ru` | Русский | `ar` | العربية |
+| `it` | Italiano | `th` | ไทย |
+| `vi` | Tiếng Việt | `tr` | Türkçe |
+| `nl` | Nederlands | `pl` | Polski |
+
+完整列表请查看前端 `TabLLM.js` 中的下拉菜单或 `config_service.py`。
+
+## 并发性能调优
+
+| 场景 | `batch_size` | `concurrent_workers` | 说明 |
+|------|-------------|---------------------|------|
+| 🏃 快速预览 | `80` | `3` | 大批次、低并发，减少连接开销 |
+| ⚖️ 平衡推荐 | `50` | `3` | 默认配置，适合大多数场景 |
+| 🔧 模型限速 | `30` | `2` | 针对速率限制严格的服务 |
+| 🚄 高速通道 | `20` | `5-8` | 高并发、小批次，最大化吞吐 |
+
+> ⚠️ `concurrent_workers` 过高可能触发 API Rate Limit。建议从 `3` 开始逐步调整。
+
+## 兼容的 LLM 服务
+
+任何实现 `/v1/chat/completions` 端点的 OpenAI 兼容服务均可使用：
+
+| 服务商 | base_url | model_name 示例 | 备注 |
+|--------|----------|-----------------|------|
+| **OpenAI** | `https://api.openai.com/v1` | `gpt-4o` | 官方 |
+| **DeepSeek** | `https://api.deepseek.com` | `deepseek-chat` | 高性价比 |
+| **Groq** | `https://api.groq.com/openai/v1` | `llama-3.1-70b-versatile` | 极速推理 |
+| **SiliconFlow** | `https://api.siliconflow.cn/v1` | `Pro/deepseek-ai/DeepSeek-V3.2` | 国内直连 |
+| **本地 Ollama** | `http://localhost:11434/v1` | `qwen2:7b` | 完全离线 |
+| **本地 vLLM** | `http://localhost:8000/v1` | 任意 | 自托管高性能推理 |
+
+## 后处理：清洗 final 写入
+
+翻译任务会先后进行两次写入：
+
+1. **初始化清空** — 翻译开始时先清空输出文件：
+```python
+with open(output_srt_path, "w", encoding="utf-8") as f:
+    f.write("")
+```
+
+2. **追加写入** — 每个完成的批次追加写入：
+```python
+with open(output_srt_path, "a", encoding="utf-8") as f:
+    f.write(translated_chunk + "\n\n")
+```
+
+## 错误处理
+
+与云端 ASR 一致，`run_llm_translation()` 也实现了三级错误分类：
+
+```python
+if isinstance(e, APIStatusError):
+    # HTTP 状态错误 (401, 429, 500...)
+elif isinstance(e, APIConnectionError):
+    # 网络连接错误 (DNS, Timeout...)
+else:
+    # 未知错误 — 完整堆栈
+    traceback.print_exc()
+```
+
+### 部分失败保护
+
+使用 `asyncio.gather(*tasks, return_exceptions=True)` 确保单个批次失败不会立即中断其他批次。所有批次完成后统一检查异常。
+
+### 资源清理
+
+`httpx.AsyncClient` 在 `finally` 块中强制调用 `aclose()` 释放连接池资源。
+
+## 最佳实践
+
+<details>
+<summary>1. 如何获得最好的翻译质量？</summary>
+
+- 选择支持多语言且翻译能力强的模型（如 `gpt-4o`、`deepseek-chat`）
+- 在 `system_prompt` 中详细描述特定术语的翻译要求
+- 上传包含专业术语的原文 SRT，而非通过 Whisper 生成（避免识别错误放大）
+- 降低 `batch_size` 到 30，让 LLM 有更多注意力集中在每一批上
+</details>
+
+<details>
+<summary>2. 如何加快翻译速度？</summary>
+
+- 增加 `concurrent_workers`（注意速率限制）
+- 使用推理速度快的模型（如 Groq 的 Llama 3.1）
+- 适当减小 `batch_size` 并搭配更多 Worker
+</details>
+
+<details>
+<summary>3. 翻译结果出现格式错误？</summary>
+
+- 使用默认 `system_prompt`（用户自定义 Prompt 可能与格式指令冲突）
+- 选择遵循指令能力强的模型
+- 检查原文 SRT 是否有特殊字符或格式异常
+</details>
+
+## 故障排除
+
+<details>
+<summary>Q: 翻译结果与原文条目数不一致？</summary>
+
+1. 减少 `batch_size` 到 30 以下，避免模型合并/遗漏字幕
+2. 确保 `system_prompt` 中包含"不要合并，不要遗漏"
+3. 尝试更换模型（某些小模型在长上下文下容易出现漏翻）
+</details>
+
+<details>
+<summary>Q: 翻译中途失败，已翻译的部分会丢失吗？</summary>
+
+不会。翻译使用追加写入（`"a"` mode），每个完成的批次立即写入磁盘。中途失败时，已完成批次的翻译内容已保存在 `translated.srt` 中。
+</details>
+
+<details>
+<summary>Q: 翻译保留了不需要的 Markdown 标记？</summary>
+
+系统会自动清洗 `` ```srt `` 和 `` ``` `` 标记。如果出现其他格式标记（如 `**粗体**`），可在 `system_prompt` 中添加"不要使用 Markdown 格式"。
+</details>

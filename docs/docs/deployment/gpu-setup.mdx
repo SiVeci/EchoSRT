@@ -1,0 +1,161 @@
+---
+sidebar_position: 2
+---
+
+# 🖥️ GPU 环境配置
+
+使用 NVIDIA GPU 加速语音识别，需要安装 NVIDIA 驱动 + Container Toolkit。faster-whisper 通过 CTranslate2 后端自动利用 CUDA / cuDNN。
+
+---
+
+## 硬件要求
+
+| 组件 | 要求 | 说明 |
+|------|------|------|
+| GPU | NVIDIA GTX 1050 或更高 | 需支持 CUDA 11.0+ |
+| 显存 | 2 GB+ (tiny), 6 GB+ (large-v2) | 模型越大显存需求越高 |
+| 驱动 | 525+ | `nvidia-smi` 查看 |
+
+---
+
+## 步骤 1：安装 NVIDIA 驱动
+
+### Ubuntu / Debian
+
+```bash
+# 查看推荐驱动版本
+ubuntu-drivers devices
+
+# 自动安装推荐驱动
+sudo ubuntu-drivers autoinstall
+
+# 或手动指定版本
+sudo apt install nvidia-driver-535
+
+# 重启
+sudo reboot
+```
+
+### 验证驱动
+
+```bash
+nvidia-smi
+```
+
+输出示例：
+```
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 535.129.03   Driver Version: 535.129.03   CUDA Version: 12.2     |
+|-------------------------------+----------------------+----------------------+
+|   0  NVIDIA GeForce RTX 3060  | 00000000:01:00.0 Off |                  N/A |
+| 30%   35C    P8     7W / 170W |    0MiB / 12288MiB   |      0%      Default |
++-------------------------------+----------------------+----------------------+
+```
+
+---
+
+## 步骤 2：安装 NVIDIA Container Toolkit
+
+```bash
+# 添加 NVIDIA 官方仓库
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+    sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# 安装
+sudo apt update
+sudo apt install -y nvidia-container-toolkit
+
+# 配置 Docker 使用 nvidia runtime
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+---
+
+## 步骤 3：验证 GPU 在容器内可用
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 nvidia-smi
+```
+
+若能正常显示 GPU 信息，则配置成功。
+
+---
+
+## 步骤 4：启动 EchoSRT GPU 版本
+
+```bash
+docker compose up -d echosrt-gpu
+```
+
+访问 `http://localhost:8001`，在 Whisper 设置中选择本地引擎并选择任意模型。首次推理时，faster-whisper 会自动下载模型并启用 CUDA 加速。
+
+---
+
+## 模型与显存对照表
+
+| 模型 | 大小 | 最低显存 | 推荐显存 | 适用场景 |
+|------|------|---------|---------|---------|
+| `tiny` | ~75 MB | 1 GB | 2 GB | 快速测试、低资源设备 |
+| `base` | ~145 MB | 1 GB | 2 GB | 一般场景 |
+| `small` | ~488 MB | 2 GB | 4 GB | 较好精度 |
+| `medium` | ~1.5 GB | 4 GB | 6 GB | 高精度 |
+| `large-v2` | ~3 GB | 6 GB | 8 GB+ | 最佳精度 |
+| `large-v3` | ~3 GB | 6 GB | 8 GB+ | 最新模型 |
+
+---
+
+## GPU 推理性能参考
+
+基于 RTX 3060 12GB 的实测数据：
+
+| 模型 | 推理速度 (实时倍数) | 显存占用 |
+|------|-------------------|---------|
+| `tiny` | 120× | ~1.2 GB |
+| `base` | 100× | ~1.5 GB |
+| `small` | 60× | ~2.5 GB |
+| `medium` | 30× | ~4.5 GB |
+| `large-v2` | 15× | ~6.5 GB |
+| `large-v3` | 15× | ~6.8 GB |
+
+"实时倍数" = 音频时长 / 推理耗时。例如 `large-v2` 的 15× 意味着 1 小时音频需要约 4 分钟完成识别。
+
+---
+
+## 常见问题
+
+<details>
+<summary><b>Q: nvidia-smi 报错 "No devices were found"？</b></summary>
+
+1. 确认驱动版本与内核兼容：`dkms status`
+2. Secure Boot 可能阻止驱动加载，尝试在 BIOS 中关闭 Secure Boot
+3. 检查 GPU 是否正确插入 PCIe 插槽并供电
+</details>
+
+<details>
+<summary><b>Q: 容器内 nvidia-smi 不可用？</b></summary>
+
+1. 确认安装了 `nvidia-container-toolkit`
+2. 执行 `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
+3. 检查 docker-compose.yml 中是否包含 `deploy.resources.reservations.devices` 配置
+</details>
+
+<details>
+<summary><b>Q: 显存不足（OOM）？</b></summary>
+
+- 在 EchoSRT 前端选择更小的模型（如 `small` 替代 `large-v2`）
+- 在 `docker-compose.yml` 中增加内存限制值
+- 关闭其他占用 GPU 的程序（`nvidia-smi` 查看）
+</details>
+
+<details>
+<summary><b>Q: GPU 推理速度反而比 CPU 慢？</b></summary>
+
+- 极小的模型（tiny/base）在 CPU 上推理已经很快，GPU 加速带来的提升有限，且 kernel launch overhead 可能拖累小模型
+- 确保 `int8_float16` 计算类型在 GPU 上正常启用（faster-whisper 默认）
+</details>

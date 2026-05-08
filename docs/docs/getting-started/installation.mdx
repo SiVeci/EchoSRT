@@ -1,0 +1,170 @@
+---
+sidebar_position: 1
+---
+
+# 🚀 安装指南
+
+## 环境要求
+
+| 依赖 | 最低版本 | 说明 |
+|------|----------|------|
+| **Python** | 3.10+ | 运行 FastAPI 后端 |
+| **FFmpeg** | 4.0+ | 音频提取与转码核心 |
+| **Docker** (推荐) | 20.10+ | 一键容器化部署 |
+| **NVIDIA Driver** (GPU 可选) | 525.60.13+ | CUDA 12 兼容驱动 |
+| **Node.js** (开发/文档) | 18+ | Docusaurus 文档构建 |
+
+## 方式一：Docker Compose（推荐）
+
+这是最推荐的一键部署方式，自动处理所有依赖：
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/SiVeci/EchoSRT.git
+cd EchoSRT
+
+# 2. 启动容器（CPU 版）
+docker compose up -d
+
+# 或启动 GPU 版（需要 NVIDIA Container Toolkit）
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+启动后访问 `http://localhost:9000` 进入 Web UI。
+
+### 挂载目录说明
+
+| 容器路径 | 宿主机用途 |
+|----------|------------|
+| `/app/config` | 持久化配置文件 `config.json` |
+| `/app/workspace` | 上传文件与生成产物 |
+| `/app/models` | 下载的 Whisper 模型缓存 |
+
+### Docker Compose 环境变量
+
+```yaml
+environment:
+  - PUID=1000          # 用户 ID（文件权限）
+  - PGID=1000          # 用户组 ID
+  - TZ=Asia/Shanghai   # 时区
+  - DOCKER_MODELS=/app/models  # 模型存储路径（GPU 版）
+```
+
+## 方式二：源码安装
+
+适用于需要在物理机上直接运行的场景：
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/SiVeci/EchoSRT.git
+cd EchoSRT
+
+# 2. 安装 Python 依赖
+pip install -r requirements.txt
+
+# 3. 安装 FFmpeg
+# Ubuntu/Debian:
+sudo apt update && sudo apt install -y ffmpeg
+# macOS:
+brew install ffmpeg
+# Windows: 下载 https://ffmpeg.org/download.html 并添加至 PATH
+
+# 4. 初始化配置文件
+cp config/config.example.json config/config.json
+
+# 5. 启动服务
+python app.py
+```
+
+## 方式三：源码安装 + GPU 支持
+
+```bash
+# 1. 安装 NVIDIA 驱动与 CUDA Toolkit
+# 参见 部署运维 > GPU 配置 章节
+
+# 2. 安装依赖（含 CUDA 加速库）
+pip install -r requirements.txt
+
+# 3. 验证 GPU 可用
+python -c "import torch; print(torch.cuda.is_available())"
+# 应输出: True
+
+# 4. 启动服务（自动检测 nvidia-smi 并启用 CUDA）
+python app.py
+```
+
+## 验证安装
+
+访问以下端点确认服务运行正常：
+
+```bash
+# 健康检查
+curl http://localhost:9000/api/system/info
+
+# 预期响应：
+# {"device": "cpu", "gpu_name": ""}
+# 或 GPU 环境下：
+# {"device": "cuda", "gpu_name": "NVIDIA GeForce RTX 4090"}
+```
+
+## 升级
+
+```bash
+# Docker 方式
+docker compose down
+git pull
+docker compose up -d --build
+
+# 源码方式
+git pull
+pip install -r requirements.txt
+python app.py
+```
+
+## 常见问题
+
+<details>
+<summary>Q: 提示 "未找到 FFmpeg"？</summary>
+
+确保 FFmpeg 在系统 PATH 中，或将其可执行文件放入 `bin/ffmpeg/bin/` 目录。
+程序会优先使用项目自带的 FFmpeg，其次使用系统全局安装的。
+
+```bash
+# 验证 FFmpeg 可用
+ffmpeg -version
+```
+</details>
+
+<details>
+<summary>Q: Docker 中无法使用 GPU？</summary>
+
+需要安装 **NVIDIA Container Toolkit**：
+
+```bash
+# Ubuntu
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+sudo systemctl restart docker
+```
+</details>
+
+<details>
+<summary>Q: 端口冲突怎么办？</summary>
+
+修改 `docker-compose.yml` 中的端口映射：
+
+```yaml
+ports:
+  - "9001:9000"  # 将宿主机端口改为 9001
+```
+
+或启动时指定：
+
+```bash
+APP_PORT=9001 python app.py
+```
+</details>

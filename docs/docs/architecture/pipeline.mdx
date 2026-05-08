@@ -1,0 +1,266 @@
+---
+sidebar_position: 2
+---
+
+# ⛓️ 流水线引擎
+
+EchoSRT 的任务流水线由三个 `asyncio.Queue` 和三个 Worker 守护协程驱动，实现 **音频提取 → 语音识别 → LLM 翻译** 的自动化串联。
+
+---
+
+## 队列架构
+
+```
+                  ┌──────────┐        ┌──────────────┐        ┌──────────┐
+   dispatcher ──▶ │q_extract │  ──▶   │ q_transcribe │  ──▶   │q_translate│
+                  └────┬─────┘        └──────┬───────┘        └────┬─────┘
+                       │                     │                     │
+                       ▼                     ▼                     ▼
+                  ┌──────────┐        ┌──────────────┐        ┌──────────┐
+                  │ extract  │        │  transcribe  │        │ translate│
+                  │  worker  │        │    worker    │        │  worker  │
+                  └──────────┘        └──────────────┘        └──────────┘
+```
+
+队列定义于 `api/state.py`：
+
+```python
+q_extract = asyncio.Queue()
+q_transcribe = asyncio.Queue()
+q_translate = asyncio.Queue()
+```
+
+### 队列数据格式
+
+每个队列元素是一个 `(task_id, config_payload)` 元组：
+
+```python
+task_id = "a3f2c9d1"           # 唯一任务标识（也是 workspace 子目录名）
+config_payload = {
+    "task_id": "a3f2c9d1",
+    "steps": ["extract", "transcribe", "translate"],
+    "ffmpeg_settings": { ... },
+    "transcribe_settings": { ... },
+    "model_settings": { ... },
+    "vad_settings": { ... },
+    "llm_settings": { ... },
+    "system_settings": { ... }
+}
+```
+
+Worker 从队列中取出 `config_payload` 后，按需读取对应的 settings 节。
+
+---
+
+## Worker 生命周期
+
+每个 Worker 是一个 **无限循环的异步守护协程**，在 `main.py` 启动时创建：
+
+```python
+# main.py
+asyncio.create_task(worker_extract_loop())
+asyncio.create_task(worker_transcribe_loop())
+asyncio.create_task(worker_translate_loop())
+```
+
+### Worker 通用模板
+
+```python
+async def worker_xxx_loop():
+    loop = asyncio.get_running_loop()
+    while True:
+        task_id, config_payload = await q_xxx.get()
+        # 1. 更新全局状态
+        global_tasks_status[task_id]["current_step"] = "processing"
+        try:
+            # 2. [防呆] 清理下游旧产物
+            # 3. 执行核心逻辑 (通过 loop.run_in_executor 避免阻塞事件循环)
+            # 4. 向下游队列推入
+            await manager.send_json({...}, task_id)
+        except Exception as e:
+            global_tasks_status[task_id]["current_step"] = "error"
+            await manager.send_json({"status": "error", ...}, task_id)
+        finally:
+            q_xxx.task_done()
+```
+
+---
+
+## 流水线节点详解
+
+### 第一站：Worker Extract
+
+**文件**：`api/workers/extract.py`  
+**消费队列**：`q_extract`  
+**核心引擎**：`core/audio_extractor.extract_audio()`  
+**输出产物**：`workspace/{task_id}/audio.wav`
+
+**关键逻辑**：
+
+```python
+# [防呆] 清理旧产物 — 重新提取音频前作废下游的旧 SRT 文件
+for old_asset in ["original.srt", "translated.srt"]:
+    asset_path = os.path.join(task_dir, old_asset)
+    if os.path.exists(asset_path):
+        os.remove(asset_path)
+
+# 通过 run_in_executor 在默认线程池中执行 FFmpeg（避免阻塞事件循环）
+await loop.run_in_executor(
+    None, extract_audio, video_path, audio_path, 
+    audio_progress_callback, ffmpeg_settings
+)
+```
+
+**下游路由**：
+
+```python
+if "transcribe" in steps:
+    global_tasks_status[task_id]["current_step"] = "pending_transcribe"
+    await q_transcribe.put((task_id, config_payload))
+elif "translate" in steps:
+    # 跳过识别，直接翻译已有 SRT
+    global_tasks_status[task_id]["current_step"] = "pending_translate"
+    await q_translate.put((task_id, config_payload))
+else:
+    # 只提取音频，结束
+    global_tasks_status[task_id]["current_step"] = "completed"
+```
+
+### 第二站：Worker Transcribe
+
+**文件**：`api/workers/transcribe.py`  
+**消费队列**：`q_transcribe`  
+**输出产物**：`workspace/{task_id}/original.srt`
+
+**引擎分支**：
+
+```python
+if engine == "api":
+    # 云端 ASR — 非阻塞 HTTP 流式（通过 run_in_executor 包装同步 API）
+    await loop.run_in_executor(
+        None, run_api_transcription, audio_path, output_srt,
+        online_asr_settings, system_settings, api_progress_callback
+    )
+else:
+    # 本地 Whisper — faster-whisper（C 扩展，释放 GIL 后线程并行）
+    segments = await loop.run_in_executor(
+        None, transcribe_audio, audio_path, model_settings,
+        transcribe_settings, vad_settings, system_settings
+    )
+    # SRT 格式化
+    await loop.run_in_executor(
+        None, generate_srt, segments, output_srt, progress_callback
+    )
+```
+
+**模型下载监控**：本地 Whisper 模式下，Worker 会启动一个并行的 `monitor_download` 协程，每秒轮询 HuggingFace 缓存目录的大小，通过 WebSocket 推送下载进度。
+
+```python
+monitor_task = asyncio.create_task(
+    monitor_download(task_id, download_root, model_size)
+)
+try:
+    segments = await loop.run_in_executor(None, transcribe_audio, ...)
+finally:
+    monitor_task.cancel()  # 推理开始后停止监控
+```
+
+**超时空闲释放**：Worker 使用 `asyncio.wait_for(q_transcribe.get(), timeout=300.0)`，若 300 秒内无新任务，自动卸载 Whiser 模型释放 GPU/内存：
+
+```python
+except asyncio.TimeoutError:
+    await loop.run_in_executor(None, unload_model)
+    continue
+```
+
+**防呆清理**：识别开始前删除旧的 `translated.srt`，防止重新识别后翻译产物的语言与新的原文不匹配。
+
+### 第三站：Worker Translate
+
+**文件**：`api/workers/translate.py`  
+**消费队列**：`q_translate`  
+**输出产物**：`workspace/{task_id}/translated.srt`
+
+**调用方式**：
+
+```python
+await run_llm_translation(
+    input_srt, output_translated, llm_config, system_config,
+    translate_progress_callback
+)
+```
+
+`run_llm_translation` 内部已经使用 `asyncio.gather` 进行并发翻译，因此 Worker 端直接 `await` 等待全部翻译完成。
+
+**元数据固化**：翻译完成后，将目标语言写入任务目录的 `meta.json`：
+
+```python
+target_lang = llm_config.get("target_language", "zh")
+meta_data["translated_language"] = target_lang
+```
+
+---
+
+## 防呆设计总结
+
+| 场景 | 机制 | 所在 Worker |
+|------|------|------------|
+| 重新提取音频 | 删除旧 `original.srt`、`translated.srt` | Extract |
+| 重新语音识别 | 删除旧 `translated.srt` | Transcribe |
+| 重复提交任务 | `dispatcher_service` 检查 `current_step` 状态 | Dispatcher |
+| 模型下载中启动任务 | `dispatcher_service` 检查 `global_downloading_models` | Dispatcher |
+| 任务执行失败 | 清理可能残留的损坏文件 + 推送错误状态 | 全部 Worker |
+| 管道倒车 | 每一步支持跳过中间节点（如直接翻译已有 SRT） | Extract / Transcribe |
+
+---
+
+## 状态流转图
+
+```
+dispatcher ──▶ pending_extract ──▶ extracting ──▶ pending_transcribe
+                                                       │
+                                                       ▼
+                                                  transcribing
+                                                       │
+                                                       ▼
+completed ◀── translating ◀── pending_translate ◀──────┘
+    ▲
+    │
+  error ◀── (任何阶段异常)
+```
+
+每一步的状态变化通过 `global_tasks_status[task_id]["current_step"]` 记录，供前端 HTTP 轮询查询。
+
+---
+
+## 配置传递
+
+所有配置从前端 `config_payload` 一次性传递，Worker 按需读取：
+
+```python
+config_payload = {
+    "steps": [...],                    # 执行步骤列表
+    "ffmpeg_settings": {},             # FFmpeg 采样率/声道配置
+    "transcribe_settings": {
+        "engine": "local",             # "local" 或 "api"
+        "language": "auto"
+    },
+    "model_settings": {
+        "model_size": "large-v2",      # whisper 模型大小
+        "download_root": "models"
+    },
+    "vad_settings": {
+        "enabled": false               # VAD 语音活动检测
+    },
+    "online_asr_settings": {},         # 云端 ASR 配置
+    "llm_settings": {
+        "api_key": "...",
+        "model_name": "...",
+        "batch_size": 50,
+        "concurrent_workers": 3
+    },
+    "system_settings": {
+        "enable_global_proxy": false,
+        "network_proxy": ""
+    }
+}

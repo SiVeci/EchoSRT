@@ -1,0 +1,208 @@
+---
+sidebar_position: 4
+---
+
+# 🏠 NAS 部署指南
+
+本指南针对群晖 (Synology)、威联通 (QNAP)、Unraid 等常见家用 NAS 系统，提供详细的 EchoSRT 部署步骤。
+
+---
+
+## 通用前提
+
+| 前提条件 | 说明 |
+|---------|------|
+| Docker / Container Station 已安装 | 各 NAS 系统自带套件商店安装 |
+| 至少 4 GB 可用内存 | 模型下载和推理的内存需求 |
+| 持久化存储空间 | `models/` 目录需 ~5 GB（依据模型而定） |
+
+---
+
+## 群晖 (Synology) 部署
+
+### 方法 A：Container Manager（DSM 7.2+）
+
+1. 打开 **Container Manager** → **项目** → **新增**
+2. 项目名称填 `echosrt`，来源选 **创建 docker-compose.yml**
+3. 粘贴以下内容：
+
+```yaml
+version: '3.8'
+services:
+  echosrt-cpu:
+    image: ghcr.io/siveci/echosrt:cpu-latest
+    container_name: echosrt-cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - PUID=1026      # 替换为你的 UID（SSH 输入 id 查看）
+      - PGID=100       # 替换为你的 GID
+      - TZ=Asia/Shanghai
+    volumes:
+      - /volume1/docker/echosrt/workspace:/app/workspace
+      - /volume1/docker/echosrt/models:/app/models
+      - /volume1/docker/echosrt/config:/app/config
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+```
+
+4. 点击 **下一步** → **完成**，容器自动创建并启动
+5. 访问 `http://NAS_IP:8000` 进入 EchoSRT 界面
+
+### 方法 B：SSH 命令行
+
+```bash
+# SSH 连接到群晖
+ssh admin@NAS_IP
+
+# 创建目录结构
+mkdir -p /volume1/docker/echosrt/{workspace,models,config}
+
+# 获取 UID/GID
+id
+
+# 下载并编辑 docker-compose.yml，填入 UID/GID
+cd /volume1/docker/echosrt
+sudo docker compose up -d
+```
+
+---
+
+## 威联通 (QNAP) 部署
+
+1. 打开 **Container Station** → **创建** → **创建应用程序**
+2. 粘贴群晖同款 `docker-compose.yml`，调整卷路径：
+
+```yaml
+volumes:
+  - /share/Container/echosrt/workspace:/app/workspace
+  - /share/Container/echosrt/models:/app/models
+  - /share/Container/echosrt/config:/app/config
+```
+
+3. 点击 **创建** 启动容器
+4. 访问 `http://QNAP_IP:8000`
+
+---
+
+## Unraid 部署
+
+1. 打开 **Docker** 标签页 → **添加容器**
+2. 切换到 **高级视图**
+3. 填入以下参数：
+
+| 配置项 | 值 |
+|--------|-----|
+| 名称 | echosrt-cpu |
+| 镜像源 | `ghcr.io/siveci/echosrt:cpu-latest` |
+| 网络类型 | Bridge |
+| 端口映射 | 8000:8000 |
+
+### 环境变量
+
+| 变量 | 值 |
+|------|-----|
+| PUID | 99 (nobody) |
+| PGID | 100 (users) |
+| TZ | Asia/Shanghai |
+
+### 路径映射
+
+| 容器路径 | 主机路径 |
+|---------|---------|
+| `/app/workspace` | `/mnt/user/appdata/echosrt/workspace/` |
+| `/app/models` | `/mnt/user/appdata/echosrt/models/` |
+| `/app/config` | `/mnt/user/appdata/echosrt/config/` |
+
+4. 添加 `--memory=4g` 到 **额外参数** 中
+5. 点击 **应用** 启动
+
+---
+
+## 权限问题解决
+
+### 症状
+
+- 输出文件权限为 root，无法通过 SMB/FTP 删除
+- 容器启动后 `workspace/` 无法写入
+
+### 解决方法
+
+1. **修改 PUID/PGID**：SSH 登录后执行 `id`，将返回的 UID/GID 填入环境变量
+2. **手动修复已有文件**：
+
+```bash
+# 在 NAS SSH 中
+sudo chown -R 1026:100 /volume1/docker/echosrt/workspace
+sudo chown -R 1026:100 /volume1/docker/echosrt/models
+```
+
+3. **跳过 chown**（加速启动）：设置 `SKIP_CHOWN=true` 环境变量，然后手动确保宿主机目录权限正确
+
+---
+
+## 性能优化
+
+### 内存管理
+
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 4G        # 可用内存上限
+      # cpus: '2.0'     # 可用 CPU 核心数
+```
+
+小内存 NAS（2 GB）建议调整 `memory: 2G`，并将 Whisper 模型限定为 `tiny` 或 `base`。
+
+### 模型持久化
+
+将 `models/` 目录放在 SSD 或高速存储卷上，因为每次推理需要加载完整模型文件。不要放在 USB 外置硬盘中。
+
+### 反向代理
+
+如需外网访问（不推荐），通过群晖自带的反向代理或 Nginx 添加 HTTPS：
+
+```nginx
+# 示例：iframe 嵌入 HA / 群晖门户
+location /echosrt/ {
+    proxy_pass http://127.0.0.1:8000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+---
+
+## 常见问题
+
+<details>
+<summary><b>Q: 容器启动后立即退出？</b></summary>
+
+查看日志：`docker logs echosrt-cpu`。常见原因：
+- PUID/PGID 对应的用户在 NAS 上不存在
+- `workspace/` 或 `models/` 目录权限不足
+- 端口 8000 已被占用
+</details>
+
+<details>
+<summary><b>Q: 界面无法访问？</b></summary>
+
+- 检查 NAS 防火墙是否开放了 8000 端口
+- 确认容器状态：`docker ps | grep echosrt`
+- 确认监听地址为 `0.0.0.0:8000`：`docker port echosrt-cpu`
+</details>
+
+<details>
+<summary><b>Q: 模型下载极慢？</b></summary>
+
+- 配置 HTTP 代理（参见 [代理配置](./proxy-config)）
+- 手动下载模型文件放入 `models/` 目录
+- 使用国内 HuggingFace 镜像站
+</details>

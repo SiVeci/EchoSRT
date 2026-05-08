@@ -1,0 +1,124 @@
+---
+sidebar_position: 1
+---
+
+# 📂 任务工作区管理
+
+任务工作区是 EchoSRT 的核心资产管理模块，负责管理所有上传的视频/音频文件及其生成的产物。每个任务拥有独立的 `workspace/{task_id}/` 目录，所有资产文件与元数据均在此隔离存储。
+
+---
+
+## 工作区目录结构
+
+```
+workspace/
+└── {task_id}/
+    ├── meta.json          # 任务元数据（基础名称、排序权重等）
+    ├── video.mp4          # 上传的原始视频（保留原始扩展名）
+    ├── audio.wav          # 提取或上传的音频（16kHz/mono WAV）
+    ├── original.srt       # 语音识别生成的原文字幕
+    └── translated.srt     # LLM 翻译生成的目标语言字幕
+```
+
+## 核心功能
+
+### 1. 上传文件
+
+支持三种上传类型：
+
+| 类型 | 支持格式 | 后端处理 |
+|------|----------|----------|
+| 📹 **视频** | `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm` 等 | 直接保存原始文件，文件名统一为 `video.{ext}` |
+| 🎵 **音频** | `.wav`, `.mp3`, `.m4a`, `.aac`, `.flac`, `.ogg`, `.wma` | 自动调用 FFmpeg 转码为 16kHz/mono WAV |
+| 📝 **字幕** | `.srt` | 保存为 `original.srt`，可跳过识别直接进入翻译 |
+
+> **路径安全**：所有 `task_id` 均经过 `sanitize_task_id()` 强制过滤，使用 `os.path.basename()` 防止路径遍历攻击。
+
+### 2. 拖拽排序
+
+前端使用 Sortable.js 实现任务卡片的拖拽排序。排序权重保存在 `meta.json` 的 `sort_weight` 字段中：
+
+```json
+{
+  "base_name": "MyVideo",
+  "sort_weight": 3
+}
+```
+
+排序规则：先按 `sort_weight` 降序，再按 `created_at` 降序。
+
+### 3. 资产状态指示
+
+每个任务卡片实时显示四类资产的可用状态：
+
+| 图标 | 状态 | 对应文件 | 检测逻辑 |
+|------|------|----------|----------|
+| 📹 | 视频就绪 | `video.*` 存在且 >5 bytes | `any(f.startswith("video.") and os.path.getsize(f) > 5)` |
+| 🎵 | 音频就绪 | `audio.wav` 存在且 >5 bytes | `os.path.getsize("audio.wav") > 5` |
+| 📝 | 原文字幕 | `original.srt` 存在且 >5 bytes | 同上 |
+| 🌍 | 翻译字幕 | `translated.srt` 存在且 >5 bytes | 同上 |
+
+> 📐 **>5 bytes 判定**：防止写入失败产生的空文件被误判为有效资产。
+
+### 4. 资产删除
+
+支持两种粒度：
+- **单资产删除**：删除 video/audio/original/translated 中的任一项（至少保留一份）
+- **整任务删除**：递归删除整个 `task_id` 目录，同时清理 `global_tasks_status` 和 WebSocket 状态
+
+**删除保护**：如果任务正在流水线中执行（`extracting`/`transcribing`/`translating`），两种删除操作均会被拒绝。
+
+### 5. 流水线启动
+
+在任务标签页可发起两种工作流：
+
+```javascript
+// 前端 main.js 中的智能步骤组装逻辑
+const steps = [];
+
+// 1. 如果有视频且没提取音频 → 必须先提音
+if (!store.assets.hasAudio && store.assets.hasVideo) steps.push("extract");
+
+// 2. 如果有音频或即将提取 → 加入识别步骤
+if (store.assets.hasAudio || steps.includes("extract")) {
+    if (!(includeTranslation && store.assets.hasOriginalSrt)) steps.push("transcribe");
+}
+
+// 3. 如果是全量工作流 → 加入翻译步骤
+if (includeTranslation) steps.push("translate");
+```
+
+## 断线重连机制
+
+EchoSRT 实现了任务执行状态的完整恢复：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. localStorage 持久化 task_id                          │
+│    ↓                                                    │
+│ 2. 页面加载时 restoreActiveTask()                        │
+│    ↓                                                    │
+│ 3. GET /api/tasks → 恢复前端资产状态                     │
+│    ↓                                                    │
+│ 4. GET /api/tasks/{task_id}/status → 查询后端运行状态    │
+│    ↓                                                    │
+│ 5. 若后端仍在处理 → 重建 WebSocket 连接，无缝接管进度     │
+└─────────────────────────────────────────────────────────┘
+```
+
+> ⚠️ **注意**：重连仅恢复进度流和日志输出。如果后端进程完全崩溃，任务需要重新提交。
+
+## API 端点参考
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| `GET` | `/api/tasks` | 获取所有任务列表 |
+| `GET` | `/api/tasks/{task_id}` | 获取单个任务状态 |
+| `POST` | `/api/tasks/{task_id}/upload/video` | 上传视频 |
+| `POST` | `/api/tasks/{task_id}/upload/audio` | 上传音频 |
+| `POST` | `/api/tasks/{task_id}/upload/srt` | 上传字幕 |
+| `DELETE` | `/api/tasks/{task_id}/assets/{type}` | 删除单个资产 |
+| `DELETE` | `/api/tasks/{task_id}` | 删除整个任务 |
+| `POST` | `/api/tasks/reorder` | 保存拖拽排序 |
+
+详细参数见 [REST API 参考](/api-reference/rest-api)。

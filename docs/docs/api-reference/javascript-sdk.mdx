@@ -1,0 +1,141 @@
+---
+sidebar_position: 2
+title: JavaScript 前端 API
+description: 前端 api.js 与 store.js 的完整封装说明
+---
+
+# JavaScript 前端 API
+
+前端通过 `api.js` 封装所有 HTTP 请求，通过 `store.js` 管理全局响应式状态。
+
+---
+
+## api.js — HTTP 封装
+
+```javascript
+// api.js
+const API_BASE = ""; // 同源部署
+
+async function request(method, path, body = null) {
+    const opts = { method, headers: {} };
+    if (body && !(body instanceof FormData)) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+    } else if (body instanceof FormData) {
+        opts.body = body;
+    }
+    const res = await fetch(`${API_BASE}${path}`, opts);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+}
+```
+
+### 核心函数
+
+| 函数 | 端点 | 说明 |
+|------|------|------|
+| `getConfig()` | `GET /api/config` | 获取完整配置 |
+| `updateConfig(data)` | `POST /api/config` | 更新配置 |
+| `restoreConfig()` | `POST /api/config/restore` | 恢复默认配置 |
+| `uploadAsset(file, assetType, taskId)` | `POST /api/upload/{type}` | 上传文件 |
+| `executeTask(payload)` | `POST /api/task/execute` | 触发任务 |
+| `getTasks()` | `GET /api/tasks` | 获取任务列表 |
+| `deleteTask(taskId)` | `DELETE /api/task/{id}` | 删除任务 |
+| `getModels()` | `GET /api/models` | 模型列表 |
+| `getLlmModels(apiKey, baseUrl)` | `GET /api/llm/models` | 拉取 LLM 模型 |
+| `getSystemInfo()` | `GET /api/system/info` | 系统信息 |
+| `testProxy(url)` | `POST /api/proxy/test` | 代理测试 |
+
+---
+
+## store.js — 响应式状态
+
+```javascript
+import { reactive, computed } from "vue";
+
+export const store = reactive({
+    // 配置
+    config: { system_settings: {}, transcribe_settings: {}, llm_settings: {}, audio_settings: {} },
+
+    // 任务状态（WebSocket 实时更新）
+    taskStates: {},
+
+    // 任务列表
+    tasks: [],
+
+    // 字典数据
+    dicts: { llm_models: [], whisper_models: [], languages: [] },
+
+    // 日志
+    logs: [],
+
+    // 全局标志
+    isProcessing: false,
+    wsConnected: false
+});
+
+// 计算属性
+export const activeTasks = computed(() =>
+    Object.values(store.taskStates).filter(t => t.state !== "done")
+);
+```
+
+### WebSocket 管理
+
+```javascript
+let ws = null;
+let retryDelay = 1000;
+
+export function connectWebSocket() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen = () => {
+        store.wsConnected = true;
+        retryDelay = 1000;
+    };
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        switch (msg.type) {
+            case "init":
+                store.taskStates = msg.task_states;
+                break;
+            case "task_update":
+                store.taskStates[msg.task_id] = msg;
+                break;
+            case "task_complete":
+                store.taskStates[msg.task_id] = { state: "done", ...msg };
+                break;
+            case "log":
+                store.logs.push(msg.content);
+                break;
+        }
+    };
+    ws.onclose = () => {
+        store.wsConnected = false;
+        setTimeout(connectWebSocket, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+    };
+}
+```
+
+### 任务监控
+
+```javascript
+export function connectTaskMonitor(taskId, callback) {
+    const ws = new WebSocket(`ws://${location.host}/ws/progress/${taskId}`);
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        callback(data);
+    };
+    ws.onclose = () => {
+        setTimeout(() => connectTaskMonitor(taskId, callback), 2000);
+    };
+}
+```
+
+---
+
+## 相关文档
+
+- [REST API](rest-api) — 完整 HTTP 端点文档
+- [WebSocket 通信](../architecture/websocket) — 实时推送协议
+- [状态管理](../architecture/state-management) — 前端同步机制

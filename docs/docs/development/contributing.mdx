@@ -1,0 +1,220 @@
+---
+sidebar_position: 2
+---
+
+# 🤝 开发贡献指南
+
+欢迎向 EchoSRT 贡献代码！本指南帮助你了解开发流程、代码规范和提交标准。
+
+---
+
+## 环境准备
+
+### 前提条件
+
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Python | 3.10+ | 核心运行时 |
+| FFmpeg | 4.0+ | 音频提取必需 |
+| Node.js | 18+ | Docusaurus 文档构建 |
+| Docker (可选) | 20.10+ | 容器化开发 |
+
+### 克隆与安装
+
+```bash
+git clone https://github.com/SiVeci/EchoSRT.git
+cd EchoSRT
+
+# 创建虚拟环境
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 启动开发服务
+python app.py
+```
+
+### 配置初始化
+
+```bash
+cp config/config.example.json config/config.json
+# 编辑 config.json 填入你的 API Key 等配置
+```
+
+---
+
+## 代码架构原则
+
+### 分层约束
+
+| 层级 | 职责 | 限制 |
+|------|------|------|
+| `core/` | 纯业务逻辑 | 禁止导入 `fastapi`、禁止访问 `request` |
+| `api/services/` | 编排协调 | 可调用 `core/`，禁止直接操作 I/O |
+| `api/routers/` | HTTP 接口 | 仅做参数解析和响应封装 |
+| `api/workers/` | 异步任务 | 通过 Queue 接收任务，通过 `ws_manager` 通信 |
+
+### 新增功能检查表
+
+1. **核心逻辑**先放入 `core/`，确保纯函数、无副作用
+2. **Service 层**编排调用链，处理异常
+3. **Router 层**定义 Pydantic Model 和端点
+4. **如需实时推送**，在 Worker 中调用 `manager.broadcast()`
+5. **前端组件**按 Tab 标签页组织，通过 `store.js` 获取状态
+
+---
+
+## 前端开发
+
+### 技术栈
+
+- **零依赖**：不使用 npm 包，ES6 模块直接运行
+- **样式**：纯 CSS（`frontend/css/style.css`）
+- **路由**：`hashchange` 事件驱动（`main.js`）
+
+### 添加新标签页
+
+1. 在 `frontend/js/components/` 创建 `TabXxx.js`
+2. 在 `frontend/index.html` 添加标签按钮和面板容器
+3. 在 `frontend/js/main.js` 的 `handleRoute()` 中注册路由
+4. 组件通过 `store.subscribe()` 监听状态变化
+
+### API 调用规范
+
+```javascript
+// 使用 api.js 已封装的函数
+import { fetchTaskStatus, executeTask } from './api.js';
+
+// 错误处理模板
+try {
+    const result = await executeTask(params);
+    store.setState({ taskId: result.task_id });
+} catch (err) {
+    store.addLog(`请求失败: ${err.message}`, 'error');
+}
+```
+
+---
+
+## 文档编写
+
+### 文档站预览
+
+```bash
+cd docs
+npm install
+npm start
+```
+
+访问 `http://localhost:3000` 查看实时预览。
+
+### 文档规范
+
+- 文件格式：`.mdx`（Markdown + JSX）
+- 代码块标注语言：` ```python `、` ```bash `、` ```json `
+- 中文为主，技术术语保留英文
+- 每个页面必须包含 `frontmatter`（`sidebar_position` 必填）
+
+### Frontmatter 模板
+
+```yaml
+---
+sidebar_position: 1
+title: 页面标题
+description: SEO 描述（可选）
+---
+```
+
+---
+
+## 提交规范
+
+### 分支策略
+
+- `main`：稳定发布分支
+- `dev`：开发分支
+- `feature/xxx`：功能分支
+
+### Commit Message 格式
+
+```
+<type>: <简短描述>
+
+<详细说明（可选）>
+```
+
+| 类型 | 说明 |
+|------|------|
+| `feat` | 新功能 |
+| `fix` | 修复 Bug |
+| `docs` | 文档更新 |
+| `refactor` | 重构（无功能变更） |
+| `chore` | 构建/工具/依赖变更 |
+| `style` | 代码风格（格式化等） |
+
+### 示例
+
+```
+feat: 添加 VAD 语音活动检测支持
+
+集成 silero-vad 模型，在语音识别前自动裁切静音段。
+通过 vad_settings.enable 开关控制启用。
+```
+
+---
+
+## 测试
+
+### 手动测试命令
+
+```bash
+# 本地 CLI 模式测试
+python main.py
+# 输入视频路径进行完整流程测试
+
+# API 模式测试
+python app.py
+# 浏览器访问 http://localhost:8000
+```
+
+### Code Review 关注点
+
+1. `core/` 的函数是否为纯函数（无副作用）
+2. 异步函数是否正确使用 `async/await`
+3. 异常处理是否充分（Worker 中的 try/except）
+4. 配置变更是否兼容旧版 `config.json`
+5. Docker 构建是否依然通过
+
+---
+
+## 常见问题
+
+<details>
+<summary><b>Q: 如何添加新的模型支持？</b></summary>
+
+1. 在 `core/` 中新增引擎文件（如 `core/whisperx_engine.py`）
+2. 实现 `transcribe(audio_path, settings) -> List[Segment]` 接口
+3. 在 `api/workers/transcribe.py` 的 Worker 循环中通过 `transcribe_settings.engine` 字段路由到新引擎
+4. 前端在 `TabWhisper.js` 中添加引擎选择项
+</details>
+
+<details>
+<summary><b>Q: 如何添加新的 LLM 提供商？</b></summary>
+
+`core/translate.py` 已支持 OpenAI 兼容格式的 API。如果新提供商偏离此格式，在 `run_llm_translation()` 中添加分支处理请求体和响应解析。
+</details>
+
+<details>
+<summary><b>Q: Docker 构建如何加速？</b></summary>
+
+```bash
+# CPU 版
+DOCKER_BUILDKIT=1 docker build -t echosrt:cpu .
+
+# GPU 版
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.gpu -t echosrt:gpu .
+```
+</details>

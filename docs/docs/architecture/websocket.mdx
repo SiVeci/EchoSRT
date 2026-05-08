@@ -1,0 +1,261 @@
+---
+sidebar_position: 4
+---
+
+# 🔌 WebSocket 通信
+
+EchoSRT 使用 WebSocket 实现服务器与客户端的**全双工通信与状态同步**，将流水线各阶段的实时进度与流式传输数据即时传递到浏览器。
+
+---
+
+## 架构概览
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     ConnectionManager                     │
+│                     (api/ws_manager.py)                    │
+│                                                           │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ active_connections: Dict[str, List[WebSocket]]       │ │
+│  │   "task_abc" → [ws1, ws2]    (一对多广播)            │ │
+│  │   "task_xyz" → [ws3]                                 │ │
+│  ├─────────────────────────────────────────────────────┤ │
+│  │ locks: Dict[str, asyncio.Lock]                       │ │
+│  │   每个 task 一个锁，防止并发写入冲突                   │ │
+│  ├─────────────────────────────────────────────────────┤ │
+│  │ task_states: Dict[str, dict]                         │ │
+│  │   缓存最新推送状态，用于状态同步                        │ │
+│  └─────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+         ▲                              │
+         │ connect()                    │ send_json()
+         │                              ▼
+┌─────────────────┐           ┌──────────────────┐
+│  WebSocket 路由  │           │  Worker 车间      │
+│  ws/progress/    │           │  extract / transcribe
+│  {task_id}       │           │  / translate      │
+└─────────────────┘           └──────────────────┘
+         ▲
+         │ ws://host:8080/ws/progress/{task_id}
+         │
+┌─────────────────┐
+│  前端 main.js   │
+│  new WebSocket()│
+└─────────────────┘
+```
+
+---
+
+## 连接生命周期
+
+### 1. 建立连接
+
+```python
+# api/routers/ws.py
+@router.websocket("/ws/progress/{task_id}")
+async def websocket_endpoint(websocket: WebSocket, task_id: str):
+    await manager.connect(websocket, task_id)
+    try:
+        while True:
+            await websocket.receive_text()  # 保活：接收客户端心跳
+    except WebSocketDisconnect:
+        manager.disconnect(task_id, websocket)
+```
+
+```python
+# api/ws_manager.py
+async def connect(self, websocket: WebSocket, task_id: str):
+    await websocket.accept()
+    if task_id not in self.active_connections:
+        self.active_connections[task_id] = []
+        self.locks[task_id] = asyncio.Lock()     # 为该 task 创建专属锁
+    self.active_connections[task_id].append(websocket)
+```
+
+### 2. 消息推送
+
+```python
+async def send_json(self, data: dict, task_id: str):
+    self.task_states[task_id] = data              # 缓存最新状态用于同步
+
+    ws_list = self.active_connections.get(task_id, [])
+    lock = self.locks.get(task_id)
+    if ws_list and lock:
+        async with lock:                          # 锁保护并发写入
+            for ws in ws_list[:]:                 # 遍历副本，避免中途修改
+                try:
+                    await ws.send_json(data)
+                except Exception:
+                    # 发送失败 → 连接已断开，主动清理
+                    if ws in self.active_connections.get(task_id, []):
+                        self.active_connections[task_id].remove(ws)
+```
+
+### 3. 断开清理
+
+```python
+def disconnect(self, task_id: str, websocket: WebSocket = None):
+    if task_id in self.active_connections:
+        if websocket is None:
+            del self.active_connections[task_id]   # 批量清理
+            self.locks.pop(task_id, None)
+        else:
+            self.active_connections[task_id].remove(websocket)
+            if not self.active_connections[task_id]:
+                del self.active_connections[task_id]
+                self.locks.pop(task_id, None)
+```
+
+---
+
+## 消息协议
+
+### 通用消息格式
+
+所有 WebSocket 消息均为 JSON 对象，包含以下公共字段：
+
+```json
+{
+  "status": "processing | completed | error",
+  "step": "extract_audio | downloading | transcribing | translating | done",
+  "message": "人可读的状态描述"
+}
+```
+
+### 各阶段增量字段
+
+```json
+// ── 音频提取阶段 ──
+{
+  "status": "processing",
+  "step": "extract_audio",
+  "extracted_time": 120.5
+}
+
+// ── 模型下载阶段 ──
+{
+  "status": "processing",
+  "step": "downloading",
+  "downloaded_mb": 1536.2
+}
+
+// ── 语音识别阶段 ──
+{
+  "status": "processing",
+  "step": "transcribing",
+  "progress": "00:00:01,000 -> 00:00:05,500",
+  "text": "Hello world"
+}
+
+// ── LLM 翻译阶段 ──
+{
+  "status": "processing",
+  "step": "translating",
+  "message": "⚡ 正在全速并发翻译中... (已完成 3/10 批)"
+}
+
+// ── 完成 ──
+{
+  "status": "completed",
+  "step": "done",
+  "message": "全量任务流水线完美收官！"
+}
+
+// ── 错误 ──
+{
+  "status": "error",
+  "message": "音频提取失败: 缺少视频源文件..."
+}
+```
+
+---
+
+## 跨线程推送
+
+Worker 中 FFmpeg 和 Whisper 推理在线程池中执行（`loop.run_in_executor`），回调函数运行在**工作线程**中。WebSocket 写入只能在事件循环线程执行，因此通过 `asyncio.run_coroutine_threadsafe` 跨线程调度：
+
+```python
+# api/workers/extract.py
+def audio_progress_callback(extracted_time):
+    msg = {"status": "processing", "step": "extract_audio", "extracted_time": extracted_time}
+    asyncio.run_coroutine_threadsafe(
+        manager.send_json(msg, task_id), loop
+    )
+```
+
+```python
+# api/workers/transcribe.py
+def progress_callback(start_time, end_time, text):
+    msg = {
+        "status": "processing", "step": "transcribing",
+        "progress": f"{start_time} -> {end_time}", "text": text
+    }
+    asyncio.run_coroutine_threadsafe(
+        manager.send_json(msg, task_id), loop
+    )
+```
+
+---
+
+## 前端消费者
+
+### 连接建立
+
+```javascript
+// frontend/js/main.js
+const ws = new WebSocket(`ws://${location.host}/ws/progress/${taskId}`);
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    store.updateTaskProgress(taskId, data);
+};
+
+ws.onerror = () => {
+    console.error("WebSocket 连接失败");
+};
+
+ws.onclose = () => {
+    console.log("WebSocket 连接已关闭");
+};
+```
+
+### 批次进度映射
+
+前端 `store.js` 将 WebSocket 消息映射到 UI 进度条：
+
+```
+msg.status === "processing" → 进度条动画 + 步骤指示灯
+msg.status === "completed"  → 进度条 100% + 绿色完成标记
+msg.status === "error"      → 进度条变红 + 错误提示弹窗
+```
+
+---
+
+## 设计考量
+
+<details>
+<summary><b>1. 全双工通信与实时流式传输</b></summary>
+
+EchoSRT 采用全双工的 WebSocket 连接，不仅能接收客户端的实时状态交互，更能将底层的任务流式产出（如 Whisper 的识别进度段、LLM 的流式翻译结果）无缝下发到浏览器，提供丝滑的用户体验。
+</details>
+
+<details>
+<summary><b>2. 一对多广播</b></summary>
+
+同一个 task 支持多个 WebSocket 连接（如多标签页同时监控）。`active_connections` 存储的是 `List[WebSocket]`，推送时遍历整个列表。
+</details>
+
+<details>
+<summary><b>3. 连接泄漏防护</b></summary>
+
+- 发送失败时自动从列表中移除连接
+- 列表为空时清理 task 级别的资源和锁
+- `WebSocketDisconnect` 异常处理确保完全断开时触发清理
+
+</details>
+
+<details>
+<summary><b>4. 不依赖额外依赖</b></summary>
+
+所有 WebSocket 功能基于 FastAPI/Starlette 原生 WebSocket 支持，无需安装 `socket.io`、`redis`、或其他中间件。
+</details>
