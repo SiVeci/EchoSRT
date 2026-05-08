@@ -30,7 +30,7 @@ docker compose up -d
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-启动后访问 `http://localhost:9000` 进入 Web UI。
+启动后访问 `http://localhost:8000` 进入 Web UI。
 
 ### 挂载目录说明
 
@@ -99,7 +99,7 @@ python app.py
 
 ```bash
 # 健康检查
-curl http://localhost:9000/api/system/info
+curl http://localhost:8000/api/system/info
 
 # 预期响应：
 # {"device": "cpu", "gpu_name": ""}
@@ -159,12 +159,12 @@ sudo systemctl restart docker
 
 ```yaml
 ports:
-  - "9001:9000"  # 将宿主机端口改为 9001
+  - "8001:8000"  # 将宿主机端口改为 8001
 ```
 
 或启动时指定：
 
 ```bash
-APP_PORT=9001 python app.py
+APP_PORT=8001 python app.py
 ```
 </details>
