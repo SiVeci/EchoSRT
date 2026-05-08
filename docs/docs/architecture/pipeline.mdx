@@ -10,17 +10,7 @@ EchoSRT 的任务流水线由三个 `asyncio.Queue` 和三个 Worker 守护协�
 
 ## 队列架构
 
-```
-                  ┌──────────┐        ┌──────────────┐        ┌──────────┐
-   dispatcher ──▶ │q_extract │  ──▶   │ q_transcribe │  ──▶   │q_translate│
-                  └────┬─────┘        └──────┬───────┘        └────┬─────┘
-                       │                     │                     │
-                       ▼                     ▼                     ▼
-                  ┌──────────┐        ┌──────────────┐        ┌──────────┐
-                  │ extract  │        │  transcribe  │        │ translate│
-                  │  worker  │        │    worker    │        │  worker  │
-                  └──────────┘        └──────────────┘        └──────────┘
-```
+<div style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '25px 20px', overflowX: 'auto', backgroundColor: 'var(--ifm-background-surface-color)', borderRadius: '8px', border: '1px solid var(--ifm-color-emphasis-200)' }}><div style={{ display: 'flex', alignItems: 'center', minWidth: '550px' }}><div style={{ fontWeight: 'bold', color: 'var(--ifm-color-primary)', marginRight: '15px', fontSize: '1.1em' }}>dispatcher ➔</div><div style={{ border: '2px solid var(--ifm-color-warning)', borderRadius: '6px', padding: '10px', backgroundColor: 'var(--ifm-color-warning-lightest)', textAlign: 'center', flex: 1, fontWeight: 'bold' }}>📥 q_extract</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-500)', fontWeight: 'bold' }}>➔</div><div style={{ border: '2px solid var(--ifm-color-success)', borderRadius: '6px', padding: '10px', backgroundColor: 'var(--ifm-color-success-lightest)', textAlign: 'center', flex: 1, fontWeight: 'bold' }}>📝 q_transcribe</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-500)', fontWeight: 'bold' }}>➔</div><div style={{ border: '2px solid var(--ifm-color-info)', borderRadius: '6px', padding: '10px', backgroundColor: 'var(--ifm-color-info-lightest)', textAlign: 'center', flex: 1, fontWeight: 'bold' }}>🌍 q_translate</div></div><div style={{ display: 'flex', minWidth: '550px', paddingLeft: '115px' }}><div style={{ flex: 1, textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em' }}>⬇</div><div style={{ width: '30px' }}></div><div style={{ flex: 1, textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em' }}>⬇</div><div style={{ width: '30px' }}></div><div style={{ flex: 1, textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em' }}>⬇</div></div><div style={{ display: 'flex', alignItems: 'center', minWidth: '550px', paddingLeft: '115px' }}><div style={{ border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '6px', padding: '15px', backgroundColor: 'var(--ifm-background-color)', textAlign: 'center', flex: 1, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><b>extract</b><br/><span style={{ fontSize: '0.85em', color: 'var(--ifm-color-emphasis-600)' }}>worker</span></div><div style={{ width: '30px' }}></div><div style={{ border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '6px', padding: '15px', backgroundColor: 'var(--ifm-background-color)', textAlign: 'center', flex: 1, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><b>transcribe</b><br/><span style={{ fontSize: '0.85em', color: 'var(--ifm-color-emphasis-600)' }}>worker</span></div><div style={{ width: '30px' }}></div><div style={{ border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '6px', padding: '15px', backgroundColor: 'var(--ifm-background-color)', textAlign: 'center', flex: 1, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><b>translate</b><br/><span style={{ fontSize: '0.85em', color: 'var(--ifm-color-emphasis-600)' }}>worker</span></div></div></div>
 
 队列定义于 `api/state.py`：
 
@@ -223,10 +213,10 @@ dispatcher ──▶ pending_extract ──▶ extracting ──▶ pending_tran
                                                   transcribing
                                                        │
                                                        ▼
-completed ◀── translating ◀── pending_translate ◀──────┘
-    ▲
-    │
-  error ◀── (任何阶段异常)
+               completed ◀── translating ◀── pending_translate 
+                   ▲
+                   │
+                 error ◀── (任何阶段异常)
 ```
 
 每一步的状态变化通过 `global_tasks_status[task_id]["current_step"]` 记录，供前端 HTTP 轮询查询。
