@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # 🏗️ 架构总览
 
-EchoSRT 采用**单进程异步架构**，以 FastAPI 为 Web 框架，通过 `asyncio.Queue` 驱动三级流水线，前端使用 React 和 Capacitor 构建，通过 WebSocket 全双工通信接收实时进度。
+EchoSRT 采用**单进程异步架构**，以 FastAPI 为 Web 框架，通过 `asyncio.Queue` 驱动三级流水线，前端使用 Vue 3 (基于 CDN 全局引入的零构建方案) 和 Element Plus 构建，通过 WebSocket 全双工通信接收实时进度。
 
 ---
 
@@ -23,7 +23,7 @@ EchoSRT 采用**单进程异步架构**，以 FastAPI 为 Web 框架，通过 `a
 | **状态层** | `api/state.py` | 全局共享数据结构：三个 `asyncio.Queue` + 两个 Dict |
 | **Worker 层** | `api/workers/` | 守护协程，消费队列，驱动 `core/` 引擎 |
 | **核心引擎** | `core/` | 纯 Python 模块：FFmpeg、faster-whisper、OpenAI API 翻译 |
-| **前端** | `frontend/` | 基于 React 和 Capacitor 构建，通过 WebSocket 全双工通信 |
+| **前端** | `frontend/` | 基于 Vue 3 + Element Plus (CDN) 零构建方案，通过 WebSocket 全双工通信 |
 
 ---
 
@@ -62,11 +62,11 @@ q_translate = asyncio.Queue()    # translate worker → 完成
 </details>
 
 <details>
-<summary><b>3. 基于 React 与 Capacitor 的前端架构</b></summary>
+<summary><b>3. 基于 Vue 3 的前端无构建方案</b></summary>
 
-EchoSRT 的前端采用 React 框架构建，并利用 Capacitor 提供跨平台打包能力，不再依赖原生 JS 无构建方案。
+EchoSRT 的前端采用 Vue 3 和 Element Plus 构建，通过 CDN 全局引入，实现了原生无构建方案。
 
-好处：组件化开发、更强的数据状态管理、支持跨多端（Web、Android、iOS 等）部署。
+好处：极简部署、免安装 Node.js、开箱即用，通过 `app.py` 直接作为静态资源伺服。
 </details>
 
 <details>
@@ -86,7 +86,7 @@ app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 ## 启动流程
 
 ```
-main.py ──启动──▶ uvicorn(app, port=8080)
+app.py ──启动──▶ uvicorn(app, port=8000)
     │
     ├── 1. 初始化 workspace/ 目录
     ├── 2. 加载 config.json（若存在）
