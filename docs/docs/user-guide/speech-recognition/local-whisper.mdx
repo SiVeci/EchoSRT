@@ -10,22 +10,28 @@ EchoSRT 集成了 [faster-whisper](https://github.com/Systran/faster-whisper) �
 
 ## 架构概览
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   core/whisper_engine.py                    │
-│                                                             │
-│  ┌───────────────────┐        ┌──────────────────────────┐  │
-│  │ transcribe_audio()│ ─────→ │ WhisperModel.transcribe()│  │
-│  │ (Module Caching)  │        │ (faster_whisper backend) │  │
-│  └───────────────────┘        └──────────────────────────┘  │
-│            │                               │                │
-│            ▼                               ▼                │
-│  ┌───────────────────┐        ┌──────────────────────────┐  │
-│  │ Model Cache Mgr   │        │ Segments Generator       │  │
-│  │ (_cached_model)   │        │ (Yield per segment)      │  │
-│  └───────────────────┘        └──────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
+{/* 第一行 */}
+<div style={{ border: '1px solid var(--ifm-color-primary)', backgroundColor: 'var(--ifm-color-primary-lightest)', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+  <b>transcribe_audio()</b><br/><span style={{ fontSize: '0.9em' }}>(模块级缓存)</span>
+</div>
+<div style={{ color: 'var(--ifm-color-primary)', fontSize: '24px', fontWeight: 'bold', textAlign: 'center' }}>➔</div>
+<div style={{ border: '1px solid var(--ifm-color-primary)', backgroundColor: 'var(--ifm-color-primary-lightest)', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+  <b>WhisperModel.transcribe()</b><br/><span style={{ fontSize: '0.9em' }}>(faster_whisper 后端)</span>
+</div>
+
+{/* 第二行（向下箭头） */}
+<div style={{ textAlign: 'center', color: 'var(--ifm-color-primary)', fontSize: '24px', fontWeight: 'bold' }}>⬇</div>
+<div></div> {/* 占位空网格 */}
+<div style={{ textAlign: 'center', color: 'var(--ifm-color-primary)', fontSize: '24px', fontWeight: 'bold' }}>⬇</div>
+
+{/* 第三行 */}
+<div style={{ border: '1px solid var(--ifm-color-success)', backgroundColor: 'var(--ifm-color-success-lightest)', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+  <b>模型缓存管理</b><br/><code style={{ backgroundColor: 'transparent' }}>_cached_model</code>
+</div>
+<div></div> {/* 占位空网格 */}
+<div style={{ border: '1px solid var(--ifm-color-warning)', backgroundColor: 'var(--ifm-color-warning-lightest)', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+  <b>segments 生成器</b><br/><span style={{ fontSize: '0.9em' }}>(逐 segment yield)</span>
+</div>
 
 ## 模型生命周期管理
 
