@@ -157,33 +157,7 @@ async def send_json(self, data: dict, task_id: str):
 
 ## 任务生命周期完整示例
 
-```
-时间线 ──────────────────────────────────────────────────────────▶
-
-1. 前端 POST /api/tasks
-   ↓
-   global_tasks_status["abc"] = {
-       "steps": [...],
-       "current_step": "pending",
-       "config": {...}
-   }
-   ↓
-2. dispatcher 检查无重复 → "pending_extract" → q_extract.put(("abc", config))
-   ↓
-3. worker_extract 消费 → "extracting" → FFmpeg 提取音频
-   ↓
-4. 提取完成 → "pending_transcribe" → q_transcribe.put(("abc", config))
-   ↓
-5. worker_transcribe 消费 → "transcribing" → Whisper 语音识别
-   ↓
-6. 识别完成 → "pending_translate" → q_translate.put(("abc", config))
-   ↓
-7. worker_translate 消费 → "translating" → LLM 翻译
-   ↓
-8. 翻译完成 → "completed"
-   ↓
-   若任何步骤失败 → "error"
-```
+<div style={{ padding: '25px', backgroundColor: 'var(--ifm-background-surface-color)', borderRadius: '8px', border: '1px solid var(--ifm-color-emphasis-200)', maxWidth: '700px', margin: '0 auto' }}><div style={{ fontSize: '1.2em', fontWeight: 'bold', color: 'var(--ifm-color-primary)', marginBottom: '25px', borderBottom: '2px solid var(--ifm-color-emphasis-200)', paddingBottom: '10px' }}>⏱️ 任务生命周期与状态流转</div><div style={{ borderLeft: '3px solid var(--ifm-color-primary)', paddingLeft: '25px', marginLeft: '10px', display: 'flex', flexDirection: 'column', gap: '25px' }}><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>1</div><b>前端 POST /api/tasks</b><div style={{ marginTop: '8px', padding: '12px', backgroundColor: 'var(--ifm-color-emphasis-100)', borderRadius: '6px', fontSize: '0.85em', fontFamily: 'monospace', color: 'var(--ifm-color-emphasis-800)' }}>global_tasks_status["abc"] = <br/>&nbsp;&nbsp;"current_step": "pending",<br/>&nbsp;&nbsp;"config": ... </div></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>2</div><b>dispatcher 检查无重复</b> ➔ <code style={{ color: 'var(--ifm-color-warning-darkest)', backgroundColor: 'var(--ifm-color-warning-lightest)' }}>pending_extract</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>触发: q_extract.put(("abc", config))</span></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>3</div><b>worker_extract 消费</b> ➔ <code style={{ color: 'var(--ifm-color-info-darkest)', backgroundColor: 'var(--ifm-color-info-lightest)' }}>extracting</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>执行: FFmpeg 提取音频</span></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>4</div><b>提取完成</b> ➔ <code style={{ color: 'var(--ifm-color-warning-darkest)', backgroundColor: 'var(--ifm-color-warning-lightest)' }}>pending_transcribe</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>触发: q_transcribe.put(...)</span></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>5</div><b>worker_transcribe 消费</b> ➔ <code style={{ color: 'var(--ifm-color-info-darkest)', backgroundColor: 'var(--ifm-color-info-lightest)' }}>transcribing</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>执行: Whisper 语音识别</span></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>6</div><b>识别完成</b> ➔ <code style={{ color: 'var(--ifm-color-warning-darkest)', backgroundColor: 'var(--ifm-color-warning-lightest)' }}>pending_translate</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>触发: q_translate.put(...)</span></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-primary)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>7</div><b>worker_translate 消费</b> ➔ <code style={{ color: 'var(--ifm-color-info-darkest)', backgroundColor: 'var(--ifm-color-info-lightest)' }}>translating</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>执行: LLM 翻译</span></div><div style={{ position: 'relative' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-success)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>8</div><b>任务全链路完成</b> ➔ <code style={{ color: 'var(--ifm-color-success-darkest)', backgroundColor: 'var(--ifm-color-success-lightest)' }}>completed</code></div><div style={{ position: 'relative', marginTop: '10px' }}><div style={{ position: 'absolute', left: '-39px', top: '-2px', backgroundColor: 'var(--ifm-color-danger)', color: 'white', width: '26px', height: '26px', borderRadius: '13px', textAlign: 'center', lineHeight: '26px', fontSize: '13px', fontWeight: 'bold' }}>!</div><b>异常中断处理</b> ➔ <code style={{ color: 'var(--ifm-color-danger-darkest)', backgroundColor: 'var(--ifm-color-danger-lightest)' }}>error</code><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', marginTop: '4px', display: 'inline-block' }}>若以上任何步骤抛出异常，状态立即扭转并清理资源。</span></div></div></div>
 
 ---
 
