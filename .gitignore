@@ -47,5 +47,6 @@ env/
 .idea/
 *.log
 *.tmp
-
+.idx/
+dev.nix
 .clinerules
