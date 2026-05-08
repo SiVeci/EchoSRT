@@ -13,25 +13,23 @@ slug: /
 
 | 模块 | 能力 | 技术实现 |
 |------|------|----------|
-| 🎵 **音频提取** | 从视频中提取 16kHz/mono WAV，支持音轨选择与时间段裁剪 | FFmpeg (`-map`, `-ss`, `-to`) |
-| 🎤 **语音识别** | 本地 faster-whisper (CTranslate2) + 云端 OpenAI 兼容 API 双引擎 | `whisper_engine.py` / `api_transcribe.py` |
-| 🌍 **字幕翻译** | LLM 异步并发翻译，支持上下文拼接防断档 | `translate.py` (asyncio + Semaphore) |
-| 📡 **实时监控** | WebSocket 全双工通信与状态同步，流式传输进度可视化 | `ws_manager.py` |
-| 🐳 **一键部署** | 基于 Docker Compose 的标准化部署，支持 CUDA/NVIDIA GPU 加速 | `docker-compose.yml` + `Dockerfile.gpu` |
+| 🎵&nbsp;**音频提取** | 从视频中提取 16kHz/mono WAV，支持音轨选择与时间段裁剪 | FFmpeg (`-map`, `-ss`, `-to`) |
+| 🎤&nbsp;**语音识别** | 本地 faster-whisper (CTranslate2) + 云端 OpenAI 兼容 API 双引擎 | `whisper_engine.py` / `api_transcribe.py` |
+| 🌍&nbsp;**字幕翻译** | LLM 异步并发翻译，支持上下文拼接防断档 | `translate.py` (asyncio + Semaphore) |
+| 📡&nbsp;**实时监控** | WebSocket 全双工通信与状态同步，流式传输进度可视化 | `ws_manager.py` |
+| 🐳&nbsp;**一键部署** | 基于 Docker Compose 的标准化部署，支持 CUDA/NVIDIA GPU 加速 | `docker-compose.yml` + `Dockerfile.gpu` |
 
 ---
 
 ## 🏗️ 技术栈一览
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  前端: React + Capacitor                                  │
-│  后端: FastAPI (Python 3.10+) + asyncio                   │
-│  引擎: FFmpeg + faster-whisper (CTranslate2) + OpenAI SDK │
-│  通信: REST API + WebSocket                               │
-│  部署: Docker / Docker Compose + NVIDIA Container Toolkit │
-└──────────────────────────────────────────────────────────┘
-```
+| 架构层 | 技术选型 |
+| :--- | :--- |
+| **前端** | React + Capacitor |
+| **后端** | FastAPI (Python 3.10+) + asyncio |
+| **引擎** | FFmpeg + faster-whisper (CTranslate2) + OpenAI SDK |
+| **通信** | REST API + WebSocket |
+| **部署** | Docker / Docker Compose + NVIDIA Container Toolkit |
 
 ---
 
