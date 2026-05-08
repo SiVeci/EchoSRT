@@ -29,36 +29,7 @@ EchoSRT 采用**单进程异步架构**，以 FastAPI 为 Web 框架，通过 `a
 
 ## 数据流向
 
-```
-用户上传视频
-    │
-    ▼
-┌──────────────────┐
-│  POST /api/tasks │  ─── 用户指定 steps: ["extract", "transcribe", "translate"]
-└──────┬───────────┘
-       │
-       ▼
-┌──────────────────┐
-│dispatcher_service│  ─── 路径消毒 + 防重复 + 代理测试 → 推入 q_extract
-└──────┬───────────┘
-       │
-       ▼
-┌──────────────────┐
-│ worker_extract   │  ─── 消费 q_extract → FFmpeg 提取 audio.wav → 推入 q_transcribe
-└──────┬───────────┘
-       │
-       ▼
-┌──────────────────┐
-│ worker_transcribe│  ─── 消费 q_transcribe → 引擎分支 (本地/云端) → 推入 q_translate
-└──────┬───────────┘
-       │
-       ▼
-┌──────────────────┐
-│ worker_translate │  ─── 消费 q_translate → LLM API 翻译 → completed
-└──────────────────┘
-
-每一步通过 WebSocket (api/ws_manager.py) 向浏览器推送实时进度
-```
+<div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px', backgroundColor: 'var(--ifm-background-surface-color)', borderRadius: '8px', border: '1px solid var(--ifm-color-emphasis-200)', overflowX: 'auto' }}><div style={{ display: 'flex', alignItems: 'center', minWidth: '600px' }}><div style={{ width: '220px', textAlign: 'center', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--ifm-color-secondary-lightest)', border: '1px solid var(--ifm-color-secondary)', fontWeight: 'bold' }}>🎬 用户上传视频</div></div><div style={{ width: '220px', textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em', margin: '-5px 0' }}>⬇</div><div style={{ display: 'flex', alignItems: 'center', minWidth: '600px' }}><div style={{ width: '220px', textAlign: 'center', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--ifm-color-primary-lightest)', border: '1px solid var(--ifm-color-primary)', fontWeight: 'bold' }}>🌐 POST /api/tasks</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-400)' }}>───▶</div><div style={{ flex: 1, padding: '12px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '6px', border: '1px dashed var(--ifm-color-emphasis-300)', fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>用户指定 <code style={{backgroundColor:'transparent'}}>steps: ["extract", "transcribe", "translate"]</code></div></div><div style={{ width: '220px', textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em', margin: '-5px 0' }}>⬇</div><div style={{ display: 'flex', alignItems: 'center', minWidth: '600px' }}><div style={{ width: '220px', textAlign: 'center', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--ifm-color-info-lightest)', border: '1px solid var(--ifm-color-info)', fontWeight: 'bold' }}>🚦 dispatcher_service</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-400)' }}>───▶</div><div style={{ flex: 1, padding: '12px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '6px', border: '1px dashed var(--ifm-color-emphasis-300)', fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>路径消毒 + 防重复 + 代理测试 ➔ <b style={{color: 'var(--ifm-color-info-darkest)'}}>推入 q_extract</b></div></div><div style={{ width: '220px', textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em', margin: '-5px 0' }}>⬇</div><div style={{ display: 'flex', alignItems: 'center', minWidth: '600px' }}><div style={{ width: '220px', textAlign: 'center', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--ifm-color-warning-lightest)', border: '1px solid var(--ifm-color-warning)', fontWeight: 'bold' }}>🎵 worker_extract</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-400)' }}>───▶</div><div style={{ flex: 1, padding: '12px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '6px', border: '1px dashed var(--ifm-color-emphasis-300)', fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>消费 q_extract ➔ FFmpeg 提取音频 ➔ <b style={{color: 'var(--ifm-color-warning-darkest)'}}>推入 q_transcribe</b></div></div><div style={{ width: '220px', textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em', margin: '-5px 0' }}>⬇</div><div style={{ display: 'flex', alignItems: 'center', minWidth: '600px' }}><div style={{ width: '220px', textAlign: 'center', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--ifm-color-success-lightest)', border: '1px solid var(--ifm-color-success)', fontWeight: 'bold' }}>📝 worker_transcribe</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-400)' }}>───▶</div><div style={{ flex: 1, padding: '12px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '6px', border: '1px dashed var(--ifm-color-emphasis-300)', fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>消费 q_transcribe ➔ 引擎分支 (本地/云端) ➔ <b style={{color: 'var(--ifm-color-success-darkest)'}}>推入 q_translate</b></div></div><div style={{ width: '220px', textAlign: 'center', color: 'var(--ifm-color-emphasis-500)', fontSize: '1.2em', margin: '-5px 0' }}>⬇</div><div style={{ display: 'flex', alignItems: 'center', minWidth: '600px' }}><div style={{ width: '220px', textAlign: 'center', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--ifm-color-danger-lightest)', border: '1px solid var(--ifm-color-danger)', fontWeight: 'bold' }}>🌍 worker_translate</div><div style={{ margin: '0 15px', color: 'var(--ifm-color-emphasis-400)' }}>───▶</div><div style={{ flex: 1, padding: '12px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '6px', border: '1px dashed var(--ifm-color-emphasis-300)', fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>消费 q_translate ➔ LLM API 翻译 ➔ <b style={{color: 'var(--ifm-color-success)'}}>completed</b></div></div><div style={{ marginTop: '20px', padding: '15px 20px', backgroundColor: 'var(--ifm-color-primary-darker)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '15px', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}><div style={{ fontSize: '2em', lineHeight: '1' }}>📡</div><div><div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '4px' }}>WebSocket 全局进度广播</div><div style={{ fontSize: '0.9em', opacity: 0.9 }}>以上每一步状态的扭转，均会同步通过 <code style={{backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', border: 'none'}}>api/ws_manager.py</code> 向前端推送实时进度。</div></div></div></div>
 
 ---
 
