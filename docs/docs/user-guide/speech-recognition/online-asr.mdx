@@ -10,22 +10,7 @@ EchoSRT 支持通过 OpenAI 兼容的 Audio API 进行云端语音识别（ASR�
 
 ## 识别流程
 
-```
-┌──────────┐    FFmpeg Physical Slicing  ┌─────────┐   HTTP POST      ┌──────────────┐
-│ audio.wav│ ──(If > 25MB)─────────────→ │ Chunks  │ ───────────────→ │ OpenAI API   │
-│ 16kHz    │                             │ < 24MB  │                  │ /v1/audio/   │
-│ mono     │                             └─────────┘                  │ transcriptions
-└──────────┘                                  │                       └──────┬───────┘
-                                              │                              │
-                                              │ Time Offset Compensation     │
-                                              │ (parse_and_shift_srt)        │
-                                              │                              │
-                                              ▼                              ▼
-                                        ┌─────────────────────────────────────────┐
-                                        │             original.srt                │
-                                        │ (Merge Chunks + Decode HTML + Join SRT) │
-                                        └─────────────────────────────────────────┘
-```
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '20px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '8px', border: '1px solid var(--ifm-color-emphasis-200)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflowX: 'auto', width: '100%', justifyContent: 'center' }}><div style={{ border: '1px solid var(--ifm-color-primary)', padding: '15px', borderRadius: '8px', textAlign: 'center', minWidth: '120px', backgroundColor: 'var(--ifm-color-primary-lightest)' }}><b>audio.wav</b><br/>16kHz / mono</div><div style={{ textAlign: 'center', color: 'var(--ifm-color-emphasis-600)', fontSize: '0.9em' }}>FFmpeg 物理切片<br/><b>──(&gt;25MB 时)──→</b></div><div style={{ border: '1px solid var(--ifm-color-warning)', padding: '15px', borderRadius: '8px', textAlign: 'center', minWidth: '100px', backgroundColor: 'var(--ifm-color-warning-lightest)' }}><b>Chunks</b><br/>&lt; 24MB</div><div style={{ textAlign: 'center', color: 'var(--ifm-color-emphasis-600)', fontSize: '0.9em' }}>HTTP POST<br/><b>──────→</b></div><div style={{ border: '1px solid var(--ifm-color-success)', padding: '15px', borderRadius: '8px', textAlign: 'center', minWidth: '150px', backgroundColor: 'var(--ifm-color-success-lightest)' }}><b>OpenAI API</b><br/>/v1/audio/<br/>transcriptions</div></div><div style={{ display: 'flex', width: '100%', justifyContent: 'space-around', color: 'var(--ifm-color-primary)' }}><div style={{ textAlign: 'center' }}>⬇<br/><span style={{ fontSize: '0.85em', color: 'var(--ifm-color-emphasis-600)' }}>时间偏移补偿<br/>(parse_and_shift_srt)</span></div><div style={{ textAlign: 'center' }}>⬇</div></div><div style={{ border: '2px dashed var(--ifm-color-primary)', padding: '15px', borderRadius: '8px', textAlign: 'center', width: '80%', backgroundColor: 'var(--ifm-background-color)' }}><b>original.srt</b><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>(合并所有切片 + HTML 解码 + SRT 拼接)</span></div></div>
 
 核心实现在 `core/api_transcribe.py` 的 `run_api_transcription()` 函数中。
 
