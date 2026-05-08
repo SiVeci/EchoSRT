@@ -10,20 +10,7 @@ EchoSRT 集成 LLM（大语言模型）实现字幕翻译，支持任意 OpenAI 
 
 ## 翻译架构
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    core/translate.py                             │
-│                                                                  │
-│  run_llm_translation()  ─── 核心调度函数                         │
-│  │                                                               │
-│  ├─ parse_srt()          ─── 解析 SRT 为独立字幕块              │
-│  ├─ translate_batch()    ─── 异步并发翻译单个批次                │
-│  └─ asyncio.gather()     ─── N 个 Worker 并行处理全部分批        │
-│                                                                  │
-│  输入: original.srt    →    输出: translated.srt                │
-│  模型: OpenAI / DeepSeek / Claude / Ollama / ...                │
-└──────────────────────────────────────────────────────────────────┘
-```
+<div style={{ border: '2px solid var(--ifm-color-emphasis-300)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--ifm-background-surface-color)' }}><div style={{ textAlign: 'center', fontSize: '1.2em', fontWeight: 'bold', marginBottom: '20px', color: 'var(--ifm-color-primary)' }}>📂 core/translate.py</div><div style={{ backgroundColor: 'var(--ifm-color-emphasis-100)', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}><b>run_llm_translation()</b> <span style={{ color: 'var(--ifm-color-emphasis-600)' }}>── 核心调度函数</span><ul style={{ marginTop: '10px', marginBottom: '0', paddingLeft: '20px', lineHeight: '1.8' }}><li><code style={{ backgroundColor: 'var(--ifm-color-emphasis-200)' }}>parse_srt()</code> ── 解析 SRT 为独立字幕块</li><li><code style={{ backgroundColor: 'var(--ifm-color-emphasis-200)' }}>translate_batch()</code> ── 异步并发翻译单个批次</li><li><code style={{ backgroundColor: 'var(--ifm-color-emphasis-200)' }}>asyncio.gather()</code> ── N 个 Worker 并行处理全部分批</li></ul></div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--ifm-color-success-lightest)', padding: '12px 20px', borderRadius: '8px', marginBottom: '15px', border: '1px solid var(--ifm-color-success)', flexWrap: 'wrap', gap: '10px' }}><span><b>📥 输入:</b> <code style={{ backgroundColor: 'transparent' }}>original.srt</code></span><span style={{ color: 'var(--ifm-color-success)', fontWeight: 'bold', fontSize: '1.2em' }}>➔</span><span><b>📤 输出:</b> <code style={{ backgroundColor: 'transparent' }}>translated.srt</code></span></div><div style={{ textAlign: 'center', fontSize: '0.9em', color: 'var(--ifm-color-emphasis-600)', padding: '10px', borderTop: '1px dashed var(--ifm-color-emphasis-300)' }}><b>🤖 支持模型:</b> OpenAI / DeepSeek / Claude / Ollama / ...</div></div>
 
 ## 翻译流程详解
 
