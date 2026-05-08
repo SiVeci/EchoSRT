@@ -1,0 +1,46 @@
+name: Deploy Docusaurus to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    # 设定：只有当你修改了 docs/ 目录下的文件时，才触发自动部署
+    paths:
+      - 'docs/**'
+  # 这个配置允许你在 Actions 页面手动点击按钮触发部署
+  workflow_dispatch:
+
+# 必须赋予权限，Actions 才能帮你把编译好的网页推送到 gh-pages 分支
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # 极其关键：告诉 Actions 你的终端命令要在 docs/ 目录下执行
+    defaults:
+      run:
+        working-directory: docs
+
+    steps:
+      - name: 1. 拉取最新代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 2. 配置 Node.js 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20 # 兼容你的项目
+
+      - name: 3. 安装依赖 (npm install)
+        run: npm install
+
+      - name: 4. 编译网页 (npm run build)
+        run: npm run build
+
+      - name: 5. 推送到 gh-pages 分支
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/build # 告诉它打包产物在哪里
