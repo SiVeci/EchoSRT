@@ -84,7 +84,7 @@ global_tasks_status = {
   写入                      读取
   ────                      ────
   dispatcher_service ─┐     GET /api/tasks/{task_id}/status
-                                          │
+                      │                   │
   worker_extract ─────┤              config_service
   worker_transcribe ──┤                   │
   worker_translate ───┘             前端 HTTP 轮询 (1s)
