@@ -87,13 +87,13 @@ def transcribe_audio(
             )
             _cached_model_params = current_params
         except Exception as e:
-            corrupted_folder = os.path.join(custom_model_dir, f"models--{repo_id.replace('/', '--')}")
-            if os.path.exists(corrupted_folder):
-                try: shutil.rmtree(corrupted_folder)
-                except Exception: pass
+            err_str = str(e).lower()
             _cached_model = None
             _cached_model_params = None
-            raise RuntimeError(f"模型文件损坏或加载失败，已自动清理缓存，请重新点击执行以触发重新下载。详细错误: {str(e)}")
+            if "safetensors" in err_str or "json" in err_str or "corrupted" in err_str or "utf-8" in err_str:
+                raise RuntimeError(f"模型加载失败，可能是文件损坏。如果持续失败，请尝试手动删除 {custom_model_dir} 目录下的模型缓存。详细错误: {str(e)}")
+            else:
+                raise RuntimeError(f"模型加载不完整或网络被中断。请重试以继续断点续传。详细错误: {str(e)}")
 
     print(f"[*] 开始识别音频: {audio_path}")
     

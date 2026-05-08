@@ -16,6 +16,10 @@ async def worker_extract_loop():
         task_dir = os.path.join(WORKSPACE_DIR, task_id)
         
         if task_id in global_tasks_status:
+            if global_tasks_status[task_id].get("current_step") in ["extracting", "transcribing", "translating"]:
+                print(f"[提取车间] 任务 {task_id} 已在处理中，忽略并发抢占。")
+                q_extract.task_done()
+                continue
             global_tasks_status[task_id]["current_step"] = "extracting"
 
         try:

@@ -44,6 +44,8 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
                 stream=False
             )
 
+            if not completion.choices or not completion.choices[0].message.content:
+                raise Exception(f"大模型返回了空内容或遇到了安全拦截。响应: {completion}")
             translated_text = completion.choices[0].message.content
             translated_text = re.sub(r'<think>.*?</think>', '', translated_text, flags=re.DOTALL)
             translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
@@ -56,7 +58,23 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
             else:
                 print(f"   {msg}")
                 
-            return (batch_index, translated_text)
+            parsed_blocks = []
+            # 尝试将大模型返回的 SRT 文本解析为块
+            blocks = translated_text.replace('\r\n', '\n').replace('\r', '\n').split('\n\n')
+            for block in blocks:
+                lines = block.strip().split('\n')
+                if len(lines) >= 3:
+                    # 尝试匹配时间轴
+                    time_match = re.search(r"(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})", lines[1])
+                    if time_match:
+                        start, end = time_match.group(1), time_match.group(2)
+                        text = "\n".join(lines[2:])
+                        parsed_blocks.append((start, end, text))
+            
+            if not parsed_blocks:
+                parsed_blocks = translated_text
+                
+            return (batch_index, parsed_blocks, batch_content)
 
         except Exception as e:
             if isinstance(e, APIStatusError):
@@ -208,14 +226,29 @@ async def run_llm_translation(
             if isinstance(res, Exception):
                 raise res
         
-        for idx, translated_chunk in results:
-            if translated_chunk:
+        # 按 batch_index 排序确保写入顺序正确
+        results.sort(key=lambda x: x[0])
+        
+        current_global_idx = 1
+        
+        for idx, parsed_blocks, original_batch in results:
+            if isinstance(parsed_blocks, list):
                 with open(output_srt_path, "a", encoding="utf-8") as f:
-                    f.write(translated_chunk + "\n\n")
-                
-                batch_start = (idx - 1) * batch_size
-                batch_end = batch_start + batch_size
-                success_count += len(srt_blocks[batch_start:batch_end])
+                    for i, block in enumerate(parsed_blocks):
+                        start, end, text = block
+                        # 强制对齐: 如果数量一致，强制使用原视频时间轴，防格式雪崩
+                        if len(parsed_blocks) == len(original_batch):
+                            orig_match = re.search(r"(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})", original_batch[i])
+                            if orig_match:
+                                start, end = orig_match.group(1), orig_match.group(2)
+                                
+                        f.write(f"{current_global_idx}\n{start} --> {end}\n{text}\n\n")
+                        current_global_idx += 1
+                success_count += len(parsed_blocks)
+            else:
+                # 极端后备: 直接写入文本
+                with open(output_srt_path, "a", encoding="utf-8") as f:
+                    f.write(parsed_blocks + "\n\n")
 
         finish_msg = f"🎉 翻译完毕！共成功处理 {success_count}/{total_blocks} 条字幕。"
         if progress_callback:

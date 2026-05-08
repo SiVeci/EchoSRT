@@ -26,7 +26,8 @@ async def save_asset(file: UploadFile, asset_type: str, task_id: str):
     if os.path.exists(meta_path):
         with open(meta_path, "r", encoding="utf-8") as f: meta_data = json.load(f)
 
-    base_name = os.path.splitext(file.filename)[0]
+    safe_filename = os.path.basename(str(file.filename).replace("\\", "/"))
+    base_name = os.path.splitext(safe_filename)[0]
     if "base_name" not in meta_data: meta_data["base_name"] = base_name
 
     # Bug 3 修复：上传新资产前，清理遗留的同类废弃文件，防止读取冲突
@@ -35,7 +36,7 @@ async def save_asset(file: UploadFile, asset_type: str, task_id: str):
             if f.startswith("video."):
                 try: os.remove(os.path.join(task_dir, f))
                 except Exception: pass
-        save_path = os.path.join(task_dir, f"video{os.path.splitext(file.filename)[1]}")
+        save_path = os.path.join(task_dir, f"video{os.path.splitext(safe_filename)[1]}")
     elif asset_type == "audio": 
         if os.path.exists(os.path.join(task_dir, "audio.wav")):
             try: os.remove(os.path.join(task_dir, "audio.wav"))
@@ -54,7 +55,7 @@ async def save_asset(file: UploadFile, asset_type: str, task_id: str):
             
     # Bug 4 修复：针对独立上传的音频，先保存为临时文件，再调用 FFmpeg 进行标准化重采样
     if asset_type == "audio":
-        temp_audio_path = os.path.join(task_dir, f"temp_upload_{uuid.uuid4().hex[:8]}{os.path.splitext(file.filename)[1]}")
+        temp_audio_path = os.path.join(task_dir, f"temp_upload_{uuid.uuid4().hex[:8]}{os.path.splitext(safe_filename)[1]}")
         await asyncio.to_thread(_save_file, file.file, temp_audio_path)
         try: await asyncio.to_thread(extract_audio, temp_audio_path, save_path)
         except Exception as e: raise HTTPException(status_code=500, detail=f"音频标准化重采样失败: {str(e)}")

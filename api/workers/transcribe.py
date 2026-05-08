@@ -64,6 +64,10 @@ async def worker_transcribe_loop():
         task_dir = os.path.join(WORKSPACE_DIR, task_id)
         
         if task_id in global_tasks_status:
+            if global_tasks_status[task_id].get("current_step") in ["transcribing", "translating"]:
+                print(f"[识别车间] 任务 {task_id} 已在后续处理中，忽略并发抢占。")
+                q_transcribe.task_done()
+                continue
             global_tasks_status[task_id]["current_step"] = "transcribing"
 
         try:

@@ -183,6 +183,8 @@ def run_api_transcription(
 
     file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
     CHUNK_LIMIT_MB = 24.0
+    audio_chunks = []
+    chunk_length_ms = 0
 
     if file_size_mb > CHUNK_LIMIT_MB:
         if progress_callback: 
@@ -190,7 +192,7 @@ def run_api_transcription(
         else:
             print(f"[*] 音频超过 25MB，正在进行防 OOM 物理切片...")
             
-        chunk_length_sec = 10 * 60
+        chunk_length_sec = 5 * 60
         chunk_length_ms = chunk_length_sec * 1000
         task_uuid = uuid.uuid4().hex[:8]
         temp_dir = tempfile.gettempdir()
@@ -206,11 +208,15 @@ def run_api_transcription(
         if not ffmpeg_cmd:
             raise FileNotFoundError("未找到 FFmpeg！请确保项目路径下存在 bin/ffmpeg 文件夹，或已在系统中安装 FFmpeg。")
             
-        subprocess.run([
+        res = subprocess.run([
             ffmpeg_cmd, "-y", "-i", audio_path,
             "-f", "segment", "-segment_time", str(chunk_length_sec),
-            "-c", "copy", segment_pattern
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            "-ac", "1", "-ar", "16000",
+            segment_pattern
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        
+        if res.returncode != 0:
+            raise RuntimeError(f"音频切片失败(防OOM机制错误)，FFmpeg 返回码: {res.returncode}, 错误: {res.stderr}")
         
         audio_chunks = []
         idx = 0
@@ -221,6 +227,9 @@ def run_api_transcription(
                 idx += 1
             else:
                 break
+        
+        if not audio_chunks:
+            raise RuntimeError("音频切片失败：未生成任何片段，可能是原始音频文件损坏或不兼容。")
     else:
         audio_chunks = [audio_path]
         chunk_length_ms = 0
@@ -292,9 +301,7 @@ def run_api_transcription(
                     final_srt_content += chunk_srt + "\n\n"
 
             finally:
-                if chunk_length_ms > 0 and os.path.exists(chunk_to_process):
-                    try: os.remove(chunk_to_process)
-                    except Exception: pass
+                pass # 将清理移至最外层统筹处理
 
         with open(output_srt_path, "w", encoding="utf-8") as f:
             f.write(final_srt_content.strip() + "\n\n")
@@ -329,3 +336,10 @@ def run_api_transcription(
             client_params["http_client"].close()
         except Exception:
             pass
+            
+        # 兜底清理切片残留，防大音频中断塞爆临时目录
+        if chunk_length_ms > 0:
+            for chunk in audio_chunks:
+                if os.path.exists(chunk):
+                    try: os.remove(chunk)
+                    except Exception: pass

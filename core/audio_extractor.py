@@ -3,6 +3,9 @@ import os
 import platform
 import shutil
 import re
+import queue
+import threading
+import time
 
 def extract_audio(video_path: str, output_audio_path: str, progress_callback=None, ffmpeg_settings: dict = None) -> str:
     """使用 FFmpeg 从视频中提取 16kHz 单声道音频"""
@@ -73,24 +76,57 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
     error_log = []
     muxing_completed = False
     
-    # 逐行读取 stderr (FFmpeg 的日志默认输出在 stderr)
-    for line in process.stderr:
-        line_str = line.strip()
-        if line_str:
-            # 保留最后 5 行有效日志，用于报错提示
-            error_log.append(line_str)
-            if len(error_log) > 5:
-                error_log.pop(0)
-                
-            if "muxing overhead:" in line_str:
-                muxing_completed = True
-                
-        match = time_pattern.search(line)
-        if match and progress_callback:
-            # 提取出 HH:MM:SS 并回调
-            progress_callback(match.group(1))
+    out_queue = queue.Queue()
+    
+    def enqueue_output(out, q):
+        try:
+            for line in iter(out.readline, ''):
+                if line: q.put(line)
+        except Exception:
+            pass
+        finally:
+            q.put(None)
+            try: out.close()
+            except Exception: pass
             
-    process.wait()
+    t = threading.Thread(target=enqueue_output, args=(process.stderr, out_queue))
+    t.daemon = True
+    t.start()
+    
+    last_output_time = time.time()
+    
+    try:
+        while True:
+            try:
+                line = out_queue.get(timeout=1.0)
+                if line is None:
+                    break
+                    
+                last_output_time = time.time()
+                line_str = line.strip()
+                if line_str:
+                    error_log.append(line_str)
+                    if len(error_log) > 5:
+                        error_log.pop(0)
+                        
+                    if "muxing overhead:" in line_str:
+                        muxing_completed = True
+                        
+                match = time_pattern.search(line)
+                if match and progress_callback:
+                    progress_callback(match.group(1))
+                    
+            except queue.Empty:
+                if process.poll() is not None:
+                    break
+                if time.time() - last_output_time > 60:
+                    raise TimeoutError("FFmpeg 进程长达 60 秒无任何输出，判定为死锁挂起，已自动中断。")
+                    
+        process.wait()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
     
     if process.returncode != 0:
         # 如果 FFmpeg 输出了完整的 muxing summary，说明即使遇到损坏帧，文件也已经完整生成，应当放行

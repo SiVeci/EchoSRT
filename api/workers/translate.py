@@ -16,6 +16,10 @@ async def worker_translate_loop():
         task_dir = os.path.join(WORKSPACE_DIR, task_id)
         
         if task_id in global_tasks_status:
+            if global_tasks_status[task_id].get("current_step") == "translating":
+                print(f"[翻译车间] 任务 {task_id} 已在处理中，忽略并发抢占。")
+                q_translate.task_done()
+                continue
             global_tasks_status[task_id]["current_step"] = "translating"
 
         try:
@@ -29,7 +33,7 @@ async def worker_translate_loop():
             
             def translate_progress_callback(msg_text):
                 msg = {"status": "processing", "step": "translating", "message": msg_text}
-                asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
+                loop.create_task(manager.send_json(msg, task_id))
                 
             await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
             await run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback)
