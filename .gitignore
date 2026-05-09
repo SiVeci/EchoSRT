@@ -47,6 +47,10 @@ env/
 .idea/
 *.log
 *.tmp
+<<<<<<< Updated upstream
 .idx/
 dev.nix
+=======
+TODO.md
+>>>>>>> Stashed changes
 .clinerules

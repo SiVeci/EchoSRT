@@ -4,47 +4,36 @@ sidebar_position: 2
 
 # ☁️ 云端 API 语音识别
 
-EchoSRT 支持通过 OpenAI 兼容的 Audio API 进行云端语音识别（ASR）和语音翻译。你可以使用 OpenAI 官方服务，也可以接入任何兼容 `/v1/audio/transcriptions` 和 `/v1/audio/translations` 端点的第三方 API（如 Groq、DeepInfra、本地 Ollama 等）。
+EchoSRT 支持通过 OpenAI 兼容的 Audio API 进行云端语音识别（ASR）和语音翻译。您可以预设多套不同的 API 方案，应对不同的网络环境或服务商限制。
 
 ---
 
 ## 识别流程
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '20px', backgroundColor: 'var(--ifm-background-color)', borderRadius: '8px', border: '1px solid var(--ifm-color-emphasis-200)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflowX: 'auto', width: '100%', justifyContent: 'center' }}><div style={{ border: '1px solid var(--ifm-color-primary)', padding: '15px', borderRadius: '8px', textAlign: 'center', minWidth: '120px', backgroundColor: 'var(--ifm-color-primary-lightest)' }}><b>audio.wav</b><br/>16kHz / mono</div><div style={{ textAlign: 'center', color: 'var(--ifm-color-emphasis-600)', fontSize: '0.9em' }}>FFmpeg 物理切片<br/><b>──(&gt;25MB 时)──→</b></div><div style={{ border: '1px solid var(--ifm-color-warning)', padding: '15px', borderRadius: '8px', textAlign: 'center', minWidth: '100px', backgroundColor: 'var(--ifm-color-warning-lightest)' }}><b>Chunks</b><br/>&lt; 24MB</div><div style={{ textAlign: 'center', color: 'var(--ifm-color-emphasis-600)', fontSize: '0.9em' }}>HTTP POST<br/><b>──────→</b></div><div style={{ border: '1px solid var(--ifm-color-success)', padding: '15px', borderRadius: '8px', textAlign: 'center', minWidth: '150px', backgroundColor: 'var(--ifm-color-success-lightest)' }}><b>OpenAI API</b><br/>/v1/audio/<br/>transcriptions</div></div><div style={{ display: 'flex', width: '100%', justifyContent: 'space-around', color: 'var(--ifm-color-primary)' }}><div style={{ textAlign: 'center' }}>⬇<br/><span style={{ fontSize: '0.85em', color: 'var(--ifm-color-emphasis-600)' }}>时间偏移补偿<br/>(parse_and_shift_srt)</span></div><div style={{ textAlign: 'center' }}>⬇</div></div><div style={{ border: '2px dashed var(--ifm-color-primary)', padding: '15px', borderRadius: '8px', textAlign: 'center', width: '80%', backgroundColor: 'var(--ifm-background-color)' }}><b>original.srt</b><br/><span style={{ fontSize: '0.9em', color: 'var(--ifm-color-emphasis-700)' }}>(合并所有切片 + HTML 解码 + SRT 拼接)</span></div></div>
+系统会自动判断音频文件大小。如果超过 **25 MB**，会启动基于 FFmpeg 的物理切片机制。每个切片独立识别并拼接，通过实时读取物理时长进行偏移补偿，确保时间轴绝对精准，绝无“雪崩式偏移”。
 
-核心实现在 `core/api_transcribe.py` 的 `run_api_transcription()` 函数中。
+## 配置参数 (v1.1.0 多方案系统)
 
-## 配置参数
+在 **🔑 Whisper API** 标签页中，您可以通过顶部的下拉框一键切换 API 方案。
 
-在 **🔑 Whisper API** 标签页或 `config.json` 中配置：
+### 核心参数
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `api_key` | string | `""` | API 密钥（必填） |
-| `base_url` | string | `"https://api.openai.com/v1"` | API 基础 URL |
-| `model_name` | string | `"whisper-1"` | 模型名称 |
-| `language` | string | `""` | 音频语言代码。`""` 表示自动检测 |
-| `prompt` | string | `""` | 提示词，引导模型识别特定词汇 |
-| `translate` | bool | `false` | 开启后调用 translations 端点，直接输出英文翻译 |
-| `speaker_labels` | bool | `false` | 开启说话人标注（需 API 支持） |
-| `word_timestamps` | bool | `false` | 开启词级时间戳 |
-| `use_network_proxy` | bool | `false` | 是否使用代理连接 API |
+| 参数 | 说明 |
+|------|------|
+| `API Base URL` | 接口地址（如 https://api.openai.com/v1）。 |
+| `API Key` | 您的访问密钥。 |
+| `Model Name` | 云端模型名（通常为 whisper-1）。 |
+| `识别语言` | 指定源视频语言。明确指定可提升准确率。 |
+| `高级设置` | 包含 Prompt 引导词、超时设置、以及“翻译为纯英文”等开关。 |
 
-### 超时设置
+### 多方案管理
 
-在 `timeout_settings` 中可精细控制连接/读取超时：
+- **新增/克隆**：快速创建备用账号配置。
+- **动态保存**：在设置页面修改后点保存，或直接启动任务，配置将实时持久化到后端。
 
-```json
-{
-  "asr_config": {
-    "timeout_settings": {
-      "connect": 15.0,
-      "read": 300.0
-    }
-  }
-}
-```
+## 兼容服务商
 
+<<<<<<< Updated upstream
 | 参数 | 默认值 | 下限 | 说明 |
 |------|--------|------|------|
 | `connect` | `15.0` | 3.0 秒 | TCP 握手超时 |
@@ -249,29 +238,18 @@ def format_time(seconds: float) -> str:
 | 隐私 | 数据不出本机 | 音频上传至第三方 |
 | 最大时长 | 无限制 | 受 API 限制 (通常 25MB/文件) |
 | 说话人标注 | ❌ | ✅ (需 API 支持) |
+=======
+- **OpenAI**：官方标准。
+- **Groq**：极速推理方案。
+- **Lemonfox / SiliconFlow**：增强型 API 代理。
+- **自建服务**：兼容 OpenAI API 规范的本地 Whisper 接口。
+>>>>>>> Stashed changes
 
 ## 故障排除
 
-<details>
-<summary>Q: 返回 401 Unauthorized？</summary>
+1. **413 Payload Too Large**：文件切片异常，请检查临时目录磁盘空间。
+2. **时间轴错位**：通常是由于原视频存在变动帧率。建议先使用“提取音频”步骤生成标准 16k WAV 后再试。
+3. **401 Unauthorized**：检查 API Key 填写位置是否正确（是否被多余方案覆盖）。
 
-1. 检查 API Key 是否正确（包括是否有多余空格）
-2. 检查 `base_url` 是否正确
-3. 确认 API Key 有对应服务的调用权限
-</details>
-
-<details>
-<summary>Q: 连接超时？</summary>
-
-1. 增加 `timeout_settings.read`（大文件可能需要数分钟）
-2. 检查是否需要配置代理
-3. 确认 `base_url` 可访问：`curl -I {base_url}/models`
-</details>
-
-<details>
-<summary>Q: 切片后字幕时间错位？</summary>
-
-1. 确认 `get_audio_duration()` 正常工作（FFprobe 可用）
-2. 检查切片文件是否完整生成
-3. 如问题持续，可手动调小 `chunk_length_sec` 增加切片密度
-</details>
+---
+*注：v1.1.0 版本对 API 管理进行了重构，建议在升级后刷新一次网页。*
