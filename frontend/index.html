@@ -100,7 +100,7 @@
               <div style="color: #606266; font-size: 14px;">
                 当前处理任务: 
                 <el-tag :type="store.taskId ? 'success' : 'info'" effect="dark">
-                  {{ store.taskId ? store.taskId.split('-')[0] + '...' : '未创建或未选择' }}
+                  {{ store.currentTaskName ? store.currentTaskName : (store.taskId ? store.taskId.split('-')[0] + '...' : '未创建或未选择') }}
                 </el-tag>
               </div>
               <div style="display: flex; gap: 15px; align-items: center;">

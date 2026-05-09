@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routers import config, tasks, ws
+from api.routers import config, tasks, ws, library
 from api.services import config_service
 from api.workers import worker_extract_loop, worker_transcribe_loop, worker_translate_loop
 
@@ -55,6 +55,7 @@ app.add_middleware(
 # --- 挂载 API 路由 ---
 app.include_router(config.router, prefix="/api", tags=["Config & System"])
 app.include_router(tasks.router, prefix="/api", tags=["Tasks & Assets"])
+app.include_router(library.router, prefix="/api", tags=["Media Library"])
 app.include_router(ws.router, tags=["Realtime & Status"])
 
 # --- 挂载静态文件与工作区 ---

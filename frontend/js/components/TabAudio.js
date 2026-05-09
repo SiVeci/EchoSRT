@@ -117,6 +117,7 @@ export default {
             try {
                 const res = await uploadAsset(options.file, 'audio', store.taskId, null);
                 store.taskId = res.task_id;
+                store.currentTaskName = options.file.name;
                 store.assets.hasAudio = true;
                 store.activeStep = 2; // 进度条更新：资产/音频已就绪
                 store.refreshTasksTrigger++;

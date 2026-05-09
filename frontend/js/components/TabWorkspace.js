@@ -1,6 +1,6 @@
 const { ref, onMounted, watch, nextTick } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig, scanLibrary, getDiscoveries, importFromLibrary } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -54,6 +54,10 @@ export default {
                             </el-button>
                             <el-button type="primary" size="small" :disabled="selectedTasks.length === 0" @click="batchRun(true)">
                                 批量全量(含翻译)
+                            </el-button>
+                            <el-divider direction="vertical"></el-divider>
+                            <el-button type="warning" size="small" plain @click="handleOpenLibraryScanner">
+                                <el-icon><Search /></el-icon> 扫描媒体库
                             </el-button>
                         </div>
                     </div>
@@ -143,6 +147,37 @@ export default {
                     </el-table-column>
                 </el-table>
             </el-card>
+
+            <el-dialog v-model="showLibraryModal" title="🔍 媒体库扫描发现" width="800px">
+                <div style="margin-bottom: 15px; color: #606266; font-size: 14px;">
+                    共发现 <strong style="color: #409EFF;">{{ scanResults.length }}</strong> 个新视频。勾选并点击“导入”即可将其转为正式任务。
+                </div>
+                <el-table :data="scanResults" @selection-change="handleLibrarySelectionChange" max-height="450">
+                    <el-table-column type="selection" width="55"></el-table-column>
+                    <el-table-column prop="filename" label="文件名" min-width="200" show-overflow-tooltip></el-table-column>
+                    <el-table-column prop="path" label="原始路径" min-width="350" show-overflow-tooltip>
+                        <template #default="scope">
+                            <span style="font-size: 12px; color: #909399;">{{ scope.row.path }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="size" label="大小" width="100">
+                        <template #default="scope">
+                            {{ (scope.row.size / 1024 / 1024).toFixed(1) }} MB
+                        </template>
+                    </el-table-column>
+                </el-table>
+                <template #footer>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="color: #909399; font-size: 13px;">已选择 {{ selectedLibraryFiles.length }} 个文件</div>
+                        <div>
+                            <el-button @click="showLibraryModal = false">取 消</el-button>
+                            <el-button type="primary" :disabled="selectedLibraryFiles.length === 0" :loading="isImporting" @click="handleImportFromLibrary">
+                                立即导入工作区
+                            </el-button>
+                        </div>
+                    </div>
+                </template>
+            </el-dialog>
         </div>
     `,
     setup() {
@@ -310,69 +345,9 @@ export default {
                     if (e !== 'cancel') ElementPlus.ElMessage.error(e.message || "删除失败");
                 }
             } else if (cmd === 'download') {
-                const url = `${window.location.origin}/api/download/${row.task_id}?type=${assetType}`;
-                if ('showSaveFilePicker' in window) {
-                    try {
-                        const headRes = await fetch(url, { method: 'HEAD' });
-                        let filename = row.base_name;
-                        const disposition = headRes.headers.get('content-disposition');
-                        if (disposition && disposition.includes('filename=')) {
-                            filename = decodeURIComponent(disposition.split('filename=')[1].replace(/["']/g, ''));
-                        } else if (disposition && disposition.includes('filename*=')) {
-                            filename = decodeURIComponent(disposition.split("''")[1]);
-                        } else {
-                            if (assetType === 'video') filename += '.mp4';
-                            else if (assetType === 'audio') filename += '.wav';
-                            else if (assetType === 'original') filename += '.srt';
-                            else if (assetType === 'translated') filename += '_translated.srt';
-                        }
-
-                        const handle = await window.showSaveFilePicker({ suggestedName: filename });
-                        const writable = await handle.createWritable();
-                        const response = await fetch(url);
-                        if (!response.ok) throw new Error("获取文件流失败");
-                        
-                        const contentLength = response.headers.get('content-length');
-                        const total = contentLength ? parseInt(contentLength, 10) : 0;
-                        let loaded = 0;
-                        const reader = response.body.getReader();
-                        
-                        const loading = ElementPlus.ElLoading.service({ lock: true, text: '⬇️ 正在保存至本地... [ 0% ]' });
-                        let lastTime = Date.now();
-                        let lastLoaded = 0;
-
-                        try {
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                await writable.write(value);
-                                loaded += value.length;
-                                
-                                const now = Date.now();
-                                if (now - lastTime > 500) {
-                                    const speed = (((loaded - lastLoaded) / ((now - lastTime) / 1000)) / 1024 / 1024).toFixed(1);
-                                    const percent = total ? Math.round((loaded / total) * 100) : '?';
-                                    const loadingTextEl = document.querySelector('.el-loading-text');
-                                    if (loadingTextEl) loadingTextEl.textContent = `⬇️ 正在保存至本地... [ ${percent}% ] (${speed} MB/s)`;
-                                    lastTime = now;
-                                    lastLoaded = loaded;
-                                }
-                            }
-                            await writable.close();
-                            loading.close();
-                            ElementPlus.ElMessage.success("✅ 文件保存成功！");
-                        } catch (err) {
-                            await writable.abort();
-                            loading.close();
-                            throw err;
-                        }
-                    } catch (err) {
-                        if (err.name !== 'AbortError') ElementPlus.ElMessage.error("下载意外中断: " + err.message);
-                    }
-                } else {
-                    window.open(url, "_blank");
-                    ElementPlus.ElNotification({ title: "下载指令已发送", message: "由于浏览器限制，请在原生下载管理器中查看进度。", type: "success" });
-                }
+                import('../api.js').then(({ downloadAsset }) => {
+                    downloadAsset(row.task_id, assetType, row.base_name);
+                });
             }
         };
 
@@ -439,9 +414,32 @@ export default {
         const batchRun = async (includeTranslation) => {
             if (selectedTasks.value.length === 0) return;
             
-            if (includeTranslation && !store.config.llm_settings.api_key) {
-                ElementPlus.ElMessage.warning("执行全量流水线前，请先在【LLM 翻译】页填写 API Key！");
-                return;
+            // 获取并解析当前激活的方案进行 API Key 校验 (防御性编程)
+            const transcribeEngine = store.config.transcribe_settings?.engine;
+            if (transcribeEngine === 'api') {
+                const asrSettings = store.config.online_asr_settings;
+                const asrProfiles = asrSettings?.profiles || [];
+                const asrActiveId = asrSettings?.active_profile_id;
+                const asrProfile = asrProfiles.find(p => p.id === asrActiveId) || asrProfiles[0];
+                
+                if (!asrProfile || !asrProfile.api_key) {
+                    console.warn("[BatchRun] ASR API Key missing in profile:", asrProfile);
+                    ElementPlus.ElMessage.warning("批量任务包含云端识别，请先在【云端 API 识别】页填写并保存 API Key！");
+                    return;
+                }
+            }
+
+            if (includeTranslation) {
+                const llmSettings = store.config.llm_settings;
+                const llmProfiles = llmSettings?.profiles || [];
+                const llmActiveId = llmSettings?.active_profile_id;
+                const llmProfile = llmProfiles.find(p => p.id === llmActiveId) || llmProfiles[0];
+                
+                if (!llmProfile || !llmProfile.api_key) {
+                    console.warn("[BatchRun] LLM API Key missing in profile:", llmProfile);
+                    ElementPlus.ElMessage.warning("执行全量流水线前，请先在【LLM 翻译】页填写并保存 API Key！");
+                    return;
+                }
             }
 
             // 代理连通性前置测试拦截
@@ -486,6 +484,7 @@ export default {
 
         const loadTask = (task) => {
             store.taskId = task.task_id;
+            store.currentTaskName = task.base_name;
             store.assets = {
                 hasVideo: task.has_video,
                 hasAudio: task.has_audio,
@@ -536,7 +535,7 @@ export default {
                     cancelButtonText: '取消', 
                     type: 'error' 
                 });
-                
+
                 isLoadingTasks.value = true;
                 let successCount = 0;
                 // 串行发出删除请求，避免前端网络拥塞和后端磁盘 I/O 风暴
@@ -546,16 +545,59 @@ export default {
                         successCount++;
                     } catch (e) {}
                 }
-                
+
                 if (!isTaskRunning(store.taskId)) {
                     store.taskId = null;
                     store.activeStep = 0;
                     store.assets = { hasVideo: false, hasAudio: false, hasOriginalSrt: false, hasTranslatedSrt: false };
                 }
-                
+
                 ElementPlus.ElMessage.success(`清理完成！已释放 ${successCount} 个任务的磁盘空间。`);
                 fetchTasks();
             } catch (e) { /* 用户点击取消 */ }
+        };
+
+        // --- 媒体库扫描逻辑 ---
+        const showLibraryModal = ref(false);
+        const scanResults = ref([]);
+        const selectedLibraryFiles = ref([]);
+        const isImporting = ref(false);
+
+        const handleOpenLibraryScanner = async () => {
+            const loading = ElementPlus.ElLoading.service({ lock: true, text: '🔍 正在深度扫描媒体库...' });
+            try {
+                const res = await scanLibrary();
+                scanResults.value = res.new_files;
+                if (scanResults.value.length === 0) {
+                    ElementPlus.ElMessage.info("未发现新的视频文件");
+                } else {
+                    showLibraryModal.value = true;
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error("扫描失败，请检查设置中的路径是否正确");
+            } finally {
+                loading.close();
+            }
+        };
+
+        const handleLibrarySelectionChange = (val) => {
+            selectedLibraryFiles.value = val;
+        };
+
+        const handleImportFromLibrary = async () => {
+            if (selectedLibraryFiles.value.length === 0) return;
+            isImporting.value = true;
+            try {
+                const paths = selectedLibraryFiles.value.map(f => f.path);
+                const res = await importFromLibrary(paths);
+                ElementPlus.ElMessage.success(res.message);
+                showLibraryModal.value = false;
+                fetchTasks();
+            } catch (e) {
+                ElementPlus.ElMessage.error(e.message || "导入失败");
+            } finally {
+                isImporting.value = false;
+            }
         };
 
         return {
@@ -577,7 +619,15 @@ export default {
             getStatusText,
             getAssetCount,
             handleAssetCommand,
-            store
+            store,
+            // 媒体库相关
+            showLibraryModal,
+            scanResults,
+            selectedLibraryFiles,
+            isImporting,
+            handleOpenLibraryScanner,
+            handleLibrarySelectionChange,
+            handleImportFromLibrary
         };
-    }
-};
+        }
+        };

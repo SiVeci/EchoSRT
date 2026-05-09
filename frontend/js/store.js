@@ -4,11 +4,12 @@ import { WS_BASE, getModels } from './api.js';
 /* 全局状态管理 (轻量级 Pinia 替代) */
 export const store = reactive({
     // --- 全局应用控制 ---
-    appVersion: "v1.0.1",
+    appVersion: "v1.1.0",
     showGlobalSettings: false,
 
     // --- 任务核心状态 ---
     taskId: null,
+    currentTaskName: "",
     activeStep: 0,
     isProcessing: false,
     
@@ -55,8 +56,48 @@ export const store = reactive({
         },
         vad_settings: { vad_filter: true },
         ffmpeg_settings: { audio_track: "0:a:0", start_time: "", end_time: "" },
-        llm_settings: { api_key: "", base_url: "https://api.openai.com/v1", model_name: "Pro/deepseek-ai/DeepSeek-V3.2", target_language: "zh", batch_size: 50, concurrent_workers: 3, system_prompt: "", use_network_proxy: false, timeout_settings: { connect: 10, read: 120 } },
-        online_asr_settings: { provider: "openai", base_url: "https://api.openai.com/v1", api_key: "", model_name: "whisper-1", language: null, prompt: "", translate: false, speaker_labels: false, word_timestamps: false, use_network_proxy: false, timeout_settings: { connect: 15, read: 300 } }
+        llm_settings: {
+            active_profile_id: "default",
+            profiles: [
+                {
+                    id: "default",
+                    name: "默认方案",
+                    api_key: "",
+                    base_url: "https://api.openai.com/v1",
+                    model_name: "gpt-4o",
+                    batch_size: 100,
+                    concurrent_workers: 3,
+                    system_prompt: "",
+                    timeout_settings: { connect: 15, read: 300 }
+                }
+            ],
+            target_language: "chs",
+            use_network_proxy: false
+        },
+        online_asr_settings: {
+            active_profile_id: "default",
+            profiles: [
+                {
+                    id: "default",
+                    name: "默认方案",
+                    api_key: "",
+                    base_url: "https://api.openai.com/v1",
+                    model_name: "whisper-1",
+                    prompt: "",
+                    translate: false,
+                    speaker_labels: false,
+                    word_timestamps: false,
+                    timeout_settings: { connect: 15, read: 300 }
+                }
+            ],
+            language: null,
+            use_network_proxy: false
+        },
+        library: {
+            library_paths: [],
+            allowed_extensions: [],
+            auto_scan_enabled: false
+        }
     },
 
     // --- 字典数据 (从后端拉取的下拉框选项) ---

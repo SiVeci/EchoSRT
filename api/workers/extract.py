@@ -1,5 +1,6 @@
 import os
 import asyncio
+import json
 
 from ..state import q_extract, q_transcribe, q_translate, global_tasks_status
 from ..ws_manager import manager
@@ -29,12 +30,26 @@ async def worker_extract_loop():
                 if os.path.exists(asset_path):
                     try: os.remove(asset_path)
                     except Exception: pass
-                    
-            video_files = [f for f in os.listdir(task_dir) if f.startswith("video.")]
-            if not video_files:
-                raise Exception("缺少视频源文件，无法执行音频提取。请先上传视频。")
             
-            video_path = os.path.join(task_dir, video_files[0])
+            # 优先从 config_payload 获取绝对路径，其次从 meta.json 获取
+            video_path = config_payload.get("absolute_path")
+            if not video_path:
+                meta_path = os.path.join(task_dir, "meta.json")
+                if os.path.exists(meta_path):
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as f:
+                            video_path = json.load(f).get("absolute_path")
+                    except Exception: pass
+            
+            if not video_path:
+                video_files = [f for f in os.listdir(task_dir) if f.startswith("video.")]
+                if not video_files:
+                    raise Exception("缺少视频源文件，无法执行音频提取。请先上传视频。")
+                video_path = os.path.join(task_dir, video_files[0])
+            else:
+                if not os.path.exists(video_path):
+                    raise Exception(f"源文件不存在: {video_path}")
+            
             audio_path = os.path.join(task_dir, "audio.wav")
             ffmpeg_settings = config_payload.get("ffmpeg_settings", {})
             

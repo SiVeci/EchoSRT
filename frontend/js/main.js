@@ -54,6 +54,7 @@ const app = createApp({
                 if(configData.ffmpeg_settings) Object.assign(store.config.ffmpeg_settings, configData.ffmpeg_settings);
                 if(configData.llm_settings) Object.assign(store.config.llm_settings, configData.llm_settings);
                 if(configData.online_asr_settings) Object.assign(store.config.online_asr_settings, configData.online_asr_settings);
+                if(configData.library) Object.assign(store.config.library, configData.library);
 
                 // 加载字典
                 store.dicts.languages = langData;
@@ -126,6 +127,7 @@ const app = createApp({
                 const taskMeta = tasks.find(t => t.task_id === activeTaskId);
                 if (taskMeta) {
                     store.taskId = activeTaskId;
+                    store.currentTaskName = taskMeta.base_name;
                     store.assets.hasVideo = taskMeta.has_video;
                     store.assets.hasAudio = taskMeta.has_audio;
                     store.assets.hasOriginalSrt = taskMeta.has_original_srt;
@@ -158,15 +160,28 @@ const app = createApp({
             const steps = [];
             // 1. 如果有视频且没提取音频，必须先提音
             if (!store.assets.hasAudio && store.assets.hasVideo) steps.push("extract");
-            // 2. 修复 Bug 1：意图推断防呆。如果是全量且已有原声，则静默跳过识别；如果是单跑提取或无原声，则强制覆盖识别
+            // 2. 意图推断防呆。如果是全量且已有原声，则静默跳过识别；如果是单跑提取或无原声，则强制覆盖识别
             if (store.assets.hasAudio || steps.includes("extract")) {
-                if (!(includeTranslation && store.assets.hasOriginalSrt)) steps.push("transcribe");
+                if (!(includeTranslation && store.assets.hasOriginalSrt)) {
+                    steps.push("transcribe");
+                    // 如果是云端 API 引擎，校验 API Key
+                    if (store.config.transcribe_settings.engine === 'api') {
+                        const asrActiveId = store.config.online_asr_settings.active_profile_id;
+                        const asrProfile = store.config.online_asr_settings.profiles.find(p => p.id === asrActiveId) || store.config.online_asr_settings.profiles[0];
+                        if (!asrProfile || !asrProfile.api_key) {
+                            ElementPlus.ElMessage.warning("使用云端识别前，请先在【云端 API 识别】页填写 API Key！");
+                            return;
+                        }
+                    }
+                }
             }
             
             // 3. 如果是全量工作流，检查并加入翻译步骤
             if (includeTranslation) {
-                if (!store.config.llm_settings.api_key) {
-                    ElementPlus.ElMessage.warning("请前往【LLM 翻译】页填写 API Key！留空无法执行全量工作流。");
+                const llmActiveId = store.config.llm_settings.active_profile_id;
+                const llmProfile = store.config.llm_settings.profiles.find(p => p.id === llmActiveId) || store.config.llm_settings.profiles[0];
+                if (!llmProfile || !llmProfile.api_key) {
+                    ElementPlus.ElMessage.warning("请前往【LLM 翻译】页填写 API Key！留空无法执行翻译步骤。");
                     return;
                 }
                 steps.push("translate");

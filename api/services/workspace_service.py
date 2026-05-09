@@ -11,6 +11,11 @@ from ..ws_manager import manager
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
+from .library_service import generate_fingerprint
+from pathlib import Path
+
+WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
+
 def sanitize_task_id(task_id: str) -> str:
     """彻底过滤路径穿透字符，仅保留最后的文件/文件夹名，防止遍历攻击"""
     if not task_id:
@@ -70,6 +75,34 @@ async def save_asset(file: UploadFile, asset_type: str, task_id: str):
         
     return {"task_id": task_id, "filename": file.filename, "message": f"{asset_type} 上传成功"}
 
+async def create_workspace_from_path(absolute_path: str):
+    """从本地绝对路径创建工作区（媒体库导入专用）"""
+    if not os.path.exists(absolute_path):
+        raise HTTPException(status_code=400, detail=f"文件不存在: {absolute_path}")
+    
+    filename = os.path.basename(absolute_path)
+    base_name = os.path.splitext(filename)[0]
+    # 使用 UUID 确保唯一性，避免路径名冲突
+    task_id = str(uuid.uuid4())
+    task_dir = os.path.join(WORKSPACE_DIR, task_id)
+    os.makedirs(task_dir, exist_ok=True)
+    
+    # 生成指纹并记录，用于后续状态追踪
+    fp = generate_fingerprint(Path(absolute_path))
+
+    meta_path = os.path.join(task_dir, "meta.json")
+    meta_data = {
+        "base_name": base_name,
+        "absolute_path": absolute_path,
+        "fingerprint": fp,
+        "import_source": "library",
+        "sort_weight": 0
+    }
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta_data, f, ensure_ascii=False, indent=2)
+        
+    return {"task_id": task_id, "base_name": base_name}
+
 async def get_download_file_path(task_id: str, type: str = "original"):
     task_id = sanitize_task_id(task_id)
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
@@ -96,7 +129,15 @@ async def get_download_file_path(task_id: str, type: str = "original"):
         target_file, out_name = os.path.join(task_dir, "audio.wav"), f"{base_name}.wav"
     elif type == "video":
         video_files = [f for f in os.listdir(task_dir) if f.startswith("video.")]
-        if not video_files: raise HTTPException(status_code=404, detail="请求的视频文件尚未生成或不存在")
+        if not video_files: 
+            # 兼容媒体库导入的文件
+            meta_path = os.path.join(task_dir, "meta.json")
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    abs_path = json.load(f).get("absolute_path")
+                    if abs_path and os.path.exists(abs_path):
+                        return abs_path, f"{base_name}{os.path.splitext(abs_path)[1]}"
+            raise HTTPException(status_code=404, detail="请求的视频文件尚未生成或不存在")
         target_file = os.path.join(task_dir, video_files[0])
         out_name = f"{base_name}{os.path.splitext(video_files[0])[1]}"
     else: 
@@ -112,15 +153,21 @@ def get_single_task(task_id: str):
         raise HTTPException(status_code=404, detail="任务不存在")
         
     meta_path, base_name = os.path.join(task_dir, "meta.json"), task_id[:8] + "..."
+    has_abs_video = False
     if os.path.exists(meta_path):
         try:
-            with open(meta_path, "r", encoding="utf-8") as f: base_name = json.load(f).get("base_name", base_name)
+            with open(meta_path, "r", encoding="utf-8") as f: 
+                meta_data = json.load(f)
+                base_name = meta_data.get("base_name", base_name)
+                abs_path = meta_data.get("absolute_path")
+                if abs_path and os.path.exists(abs_path):
+                    has_abs_video = True
         except Exception: pass
             
     def check_valid(file_path):
         return os.path.exists(file_path) and os.path.getsize(file_path) > 5
         
-    has_video = any(f.startswith("video.") and check_valid(os.path.join(task_dir, f)) for f in os.listdir(task_dir))
+    has_video = has_abs_video or any(f.startswith("video.") and check_valid(os.path.join(task_dir, f)) for f in os.listdir(task_dir))
     
     return { "task_id": task_id, "base_name": base_name, "has_video": has_video, "has_audio": check_valid(os.path.join(task_dir, "audio.wav")), "has_original_srt": check_valid(os.path.join(task_dir, "original.srt")), "has_translated_srt": check_valid(os.path.join(task_dir, "translated.srt")), "created_at": os.path.getmtime(task_dir) }
 
@@ -134,18 +181,22 @@ def get_all_tasks():
             
         meta_path, base_name = os.path.join(task_dir, "meta.json"), task_id[:8] + "..."
         sort_weight = 0
+        has_abs_video = False
         if os.path.exists(meta_path):
             try:
                 with open(meta_path, "r", encoding="utf-8") as f: 
                     meta_data = json.load(f)
                     base_name = meta_data.get("base_name", base_name)
                     sort_weight = meta_data.get("sort_weight", 0)
+                    abs_path = meta_data.get("absolute_path")
+                    if abs_path and os.path.exists(abs_path):
+                        has_abs_video = True
             except Exception: pass
                 
         def check_valid(file_path):
             return os.path.exists(file_path) and os.path.getsize(file_path) > 5
             
-        has_video = any(f.startswith("video.") and check_valid(os.path.join(task_dir, f)) for f in os.listdir(task_dir))
+        has_video = has_abs_video or any(f.startswith("video.") and check_valid(os.path.join(task_dir, f)) for f in os.listdir(task_dir))
         
         tasks.append({ "task_id": task_id, "base_name": base_name, "sort_weight": sort_weight, "has_video": has_video, "has_audio": check_valid(os.path.join(task_dir, "audio.wav")), "has_original_srt": check_valid(os.path.join(task_dir, "original.srt")), "has_translated_srt": check_valid(os.path.join(task_dir, "translated.srt")), "created_at": os.path.getmtime(task_dir) })
         
@@ -181,13 +232,27 @@ def delete_single_asset(task_id: str, asset_type: str):
             
     def check_valid(file_path): return os.path.exists(file_path) and os.path.getsize(file_path) > 5
     
+    meta_path = os.path.join(task_dir, "meta.json")
+    has_abs_video = False
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                abs_path = json.load(f).get("absolute_path")
+                if abs_path and os.path.exists(abs_path):
+                    has_abs_video = True
+        except Exception: pass
+
+    if asset_type == "video" and has_abs_video:
+        raise HTTPException(status_code=400, detail="该视频为媒体库外部映射文件，受系统保护不可单独删除。如需清理，请直接删除整个任务！")
+
     v_files = [f for f in os.listdir(task_dir) if f.startswith("video.") and check_valid(os.path.join(task_dir, f))]
-    has_video = len(v_files) > 0
+    has_local_video = len(v_files) > 0
     has_audio = check_valid(os.path.join(task_dir, "audio.wav"))
     has_original = check_valid(os.path.join(task_dir, "original.srt"))
     has_translated = check_valid(os.path.join(task_dir, "translated.srt"))
     
-    if sum([has_video, has_audio, has_original, has_translated]) <= 1:
+    total_assets = sum([has_abs_video or has_local_video, has_audio, has_original, has_translated])
+    if total_assets <= 1:
         raise HTTPException(status_code=400, detail="该任务仅剩最后一份资产，如需彻底清理，请在右侧直接删除整个任务！")
         
     try:

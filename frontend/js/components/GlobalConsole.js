@@ -68,9 +68,20 @@ export default {
             }
         });
 
-        const downloadSrt = (type) => {
+        const downloadSrt = async (type) => {
             if (!store.taskId) return;
-            window.open(`${API_BASE}/api/download/${store.taskId}?type=${type}`, "_blank");
+            try {
+                // 需要先获取一次任务列表拿到 base_name
+                const { getTasks } = await import('../api.js');
+                const tasks = await getTasks();
+                const task = tasks.find(t => t.task_id === store.taskId);
+                const baseName = task ? task.base_name : 'download';
+                
+                const { downloadAsset } = await import('../api.js');
+                downloadAsset(store.taskId, type, baseName);
+            } catch (e) {
+                console.error("下载失败", e);
+            }
         };
 
         return { store, logBox, activeCollapse, downloadSrt };

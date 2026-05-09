@@ -72,6 +72,16 @@ export default {
         const runTranscribe = async () => {
             if (!store.taskId || !store.assets.hasAudio) return;
 
+            // 如果是 API 引擎，额外校验 API Key
+            if (store.config.transcribe_settings.engine === 'api') {
+                const asrActiveId = store.config.online_asr_settings.active_profile_id;
+                const asrProfile = store.config.online_asr_settings.profiles.find(p => p.id === asrActiveId) || store.config.online_asr_settings.profiles[0];
+                if (!asrProfile || !asrProfile.api_key) {
+                    ElementPlus.ElMessage.warning("使用云端识别前，请先在【云端 API 识别】页填写 API Key！");
+                    return;
+                }
+            }
+
             store.isProcessing = true;
             store.activeStep = 3; // 进度条跳到原声识别
             store.taskState.downloadedMB = null;

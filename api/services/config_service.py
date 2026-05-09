@@ -71,13 +71,75 @@ def get_system_info():
         return {"device": "cuda", "gpu_name": gpu_name}
     return {"device": "cpu", "gpu_name": ""}
 
+def _migrate_config_internal(config: dict) -> bool:
+    """内部迁移函数，将旧版单配置迁移为 Profile 结构。返回 True 表示有改动。"""
+    changed = False
+    
+    # 1. 迁移 llm_settings
+    if "llm_settings" in config and "profiles" not in config["llm_settings"]:
+        old_llm = config["llm_settings"]
+        new_profile = {
+            "id": "default",
+            "name": "默认方案",
+            "api_key": old_llm.get("api_key", ""),
+            "base_url": old_llm.get("base_url", "https://api.openai.com/v1"),
+            "model_name": old_llm.get("model_name", "gpt-4o"),
+            "batch_size": old_llm.get("batch_size", 100),
+            "concurrent_workers": old_llm.get("concurrent_workers", 3),
+            "system_prompt": old_llm.get("system_prompt", ""),
+            "timeout_settings": old_llm.get("timeout_settings", {"connect": 15, "read": 300})
+        }
+        config["llm_settings"] = {
+            "active_profile_id": "default",
+            "profiles": [new_profile],
+            "target_language": old_llm.get("target_language", "chs"),
+            "use_network_proxy": old_llm.get("use_network_proxy", False)
+        }
+        changed = True
+
+    # 2. 迁移 online_asr_settings
+    if "online_asr_settings" in config and "profiles" not in config["online_asr_settings"]:
+        old_asr = config["online_asr_settings"]
+        new_profile = {
+            "id": "default",
+            "name": "默认方案",
+            "api_key": old_asr.get("api_key", ""),
+            "base_url": old_asr.get("base_url", "https://api.openai.com/v1"),
+            "model_name": old_asr.get("model_name", "whisper-1"),
+            "prompt": old_asr.get("prompt", ""),
+            "translate": old_asr.get("translate", False),
+            "speaker_labels": old_asr.get("speaker_labels", False),
+            "word_timestamps": old_asr.get("word_timestamps", False),
+            "timeout_settings": old_asr.get("timeout_settings", {"connect": 15, "read": 300})
+        }
+        config["online_asr_settings"] = {
+            "active_profile_id": "default",
+            "profiles": [new_profile],
+            "language": old_asr.get("language", None),
+            "use_network_proxy": old_asr.get("use_network_proxy", False)
+        }
+        changed = True
+        
+    return changed
+
+def _save_config_sync(config: dict):
+    """同步保存配置函数"""
+    temp_path = CONFIG_PATH + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+    os.replace(temp_path, CONFIG_PATH)
+
 async def get_config():
     if not os.path.exists(CONFIG_PATH) and os.path.exists(EXAMPLE_CONFIG_PATH):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         shutil.copy(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
         
     def _read():
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f: return json.load(f)
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            if _migrate_config_internal(config):
+                _save_config_sync(config)
+            return config
         
     try:
         async with config_lock:
@@ -102,17 +164,46 @@ async def restore_config():
 async def update_config(payload: dict):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        def _save():
-            temp_path = CONFIG_PATH + ".tmp"
-            with open(temp_path, "w", encoding="utf-8") as f: json.dump(payload, f, indent=2, ensure_ascii=False)
-            os.replace(temp_path, CONFIG_PATH)
+        
+        # 增量合并逻辑：以前端传来的 payload 为主
+        # 仅当 payload 完全缺失某个顶级节点时，才从物理文件中补全（防呆保护）
+        existing_config = {}
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    existing_config = json.load(f)
+            except Exception: pass
             
+        final_config = payload.copy()
+        
+        # 检查并补全缺失的顶级节点
+        for key in ["library", "system_settings", "model_settings", "transcribe_settings", "llm_settings", "online_asr_settings"]:
+            if key in existing_config and key not in final_config:
+                final_config[key] = existing_config[key]
+
         async with config_lock:
-            await asyncio.to_thread(_save)
+            await asyncio.to_thread(_save_config_sync, final_config)
             
-        set_global_proxy(payload.get("system_settings", {}))
+        set_global_proxy(final_config.get("system_settings", {}))
         return {"message": "配置已保存并生效"}
     except Exception as e: raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
+
+def resolve_active_profile(settings: dict) -> dict:
+    """从设置中解析出当前激活的 Profile 并将其字段平铺到根部"""
+    if not settings or "profiles" not in settings:
+        return settings
+    
+    active_id = settings.get("active_profile_id", "default")
+    profiles = settings.get("profiles", [])
+    if not profiles:
+        return settings
+        
+    profile = next((p for p in profiles if p["id"] == active_id), profiles[0])
+    
+    # 合并 Profile 的字段到 settings 中
+    new_settings = settings.copy()
+    new_settings.update(profile)
+    return new_settings
 
 def test_proxy(proxy_url: str):
     proxy_url = proxy_url.strip()

@@ -30,6 +30,19 @@ def set_global_proxy(system_settings: dict):
         for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"]:
             os.environ.pop(k, None)
 
+def resolve_active_profile(settings: dict) -> dict:
+    """从设置中解析出当前激活的 Profile 并将其字段平铺到根部"""
+    if not settings or "profiles" not in settings:
+        return settings
+    active_id = settings.get("active_profile_id", "default")
+    profiles = settings.get("profiles", [])
+    if not profiles:
+        return settings
+    profile = next((p for p in profiles if p["id"] == active_id), profiles[0])
+    new_settings = settings.copy()
+    new_settings.update(profile)
+    return new_settings
+
 def main():
     print("=== 本地 GPU 视频自动提取字幕工具 ===")
     
@@ -91,10 +104,11 @@ def main():
         
         if engine == "api":
             print("\n[*] 正在调用云端 API 进行语音识别...")
+            asr_config = resolve_active_profile(config.get("online_asr_settings", {}))
             run_api_transcription(
                 audio_path=temp_audio_path,
                 output_srt_path=output_srt_path,
-                asr_config=config.get("online_asr_settings", {}),
+                asr_config=asr_config,
                 system_config=config.get("system_settings", {})
             )
         else:
@@ -109,15 +123,15 @@ def main():
             generate_srt(segments, output_srt_path)
         
         # 步骤 4: LLM 智能翻译 (可选)
-        llm_config = config.get("llm_settings", {})
-        if llm_config.get("api_key"):
+        llm_settings = resolve_active_profile(config.get("llm_settings", {}))
+        if llm_settings.get("api_key"):
             choice = input(f"\n[*] 检测到已配置大模型 API Key，是否继续进行智能翻译出熟肉？(y/N): ").strip().lower()
             if choice == 'y':
-                print(f"[*] 正在调用大模型进行翻译，目标语言: {llm_config.get('target_language', 'zh')}")
+                print(f"[*] 正在调用大模型进行翻译，目标语言: {llm_settings.get('target_language', 'zh')}")
                 asyncio.run(run_llm_translation(
                     input_srt_path=output_srt_path,
                     output_srt_path=output_translated_path,
-                    llm_config=llm_config,
+                    llm_config=llm_settings,
                     system_config=config.get("system_settings", {})
                 ))
         

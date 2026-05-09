@@ -12,3 +12,7 @@ global_tasks_status: Dict[str, dict] = {}
 
 # 全局下载模型状态字典
 global_downloading_models: Dict[str, dict] = {}
+
+# 全局媒体库发现列表
+# key: fingerprint, value: {"path": "...", "size": 0, "mtime": 0, "status": "new/imported"}
+global_library_discoveries: Dict[str, dict] = {}

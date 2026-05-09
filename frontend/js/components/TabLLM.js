@@ -32,12 +32,33 @@ export default {
             </el-card>
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
+                <template #header>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="card-title">⚙️ 翻译参数 (LLM)</span>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 13px; color: #909399;">切换方案:</span>
+                            <el-select v-model="store.config.llm_settings.active_profile_id" size="small" style="width: 150px;">
+                                <el-option v-for="p in store.config.llm_settings.profiles" :key="p.id" :label="p.name" :value="p.id"></el-option>
+                            </el-select>
+                            <el-dropdown trigger="click" @command="handleProfileCommand">
+                                <el-button type="info" size="small" plain icon="Operation"></el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="add" icon="Plus">新增方案</el-dropdown-item>
+                                        <el-dropdown-item command="rename" icon="Edit">重命名当前方案</el-dropdown-item>
+                                        <el-dropdown-item command="delete" icon="Delete" divided style="color: #F56C6C;">删除当前方案</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
+                        </div>
+                    </div>
+                </template>
                 <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
                     <el-collapse-item name="1">
                         <template #title>
-                            <span class="card-title">⚙️ 翻译参数 (LLM)</span>
+                            <span style="color: #909399; font-size: 13px;">点击展开更多翻译细节设置 (并发、批次、Prompt 等)</span>
                         </template>
-                        <el-form :model="store.config.llm_settings" label-width="140px" label-position="left" size="default">
+                        <el-form :model="activeProfile" label-width="140px" label-position="left" size="default">
                             <el-form-item>
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
@@ -47,11 +68,11 @@ export default {
                                         </el-tooltip>
                                     </span>
                                 </template>
-                                <el-input v-model="store.config.llm_settings.base_url" placeholder="例如: https://api.openai.com/v1"></el-input>
+                                <el-input v-model="activeProfile.base_url" placeholder="例如: https://api.openai.com/v1"></el-input>
                             </el-form-item>
 
                             <el-form-item label="API Key">
-                                <el-input v-model="store.config.llm_settings.api_key" type="password" show-password placeholder="sk-..."></el-input>
+                                <el-input v-model="activeProfile.api_key" type="password" show-password placeholder="sk-..."></el-input>
                             </el-form-item>
 
                             <el-form-item>
@@ -76,7 +97,7 @@ export default {
                                     </span>
                                 </template>
                                 <div style="display: flex; gap: 10px; width: 100%;">
-                                    <el-select v-model="store.config.llm_settings.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
+                                    <el-select v-model="activeProfile.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
                                         <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
                                     </el-select>
                                     <el-button type="primary" plain @click="refreshModels" :loading="isFetchingModels" title="从 API 供应商拉取可用模型">
@@ -113,7 +134,7 @@ export default {
                                         </el-tooltip>
                                     </span>
                                 </template>
-                                <el-slider v-model="store.config.llm_settings.batch_size" :min="10" :max="200" :step="10" show-input></el-slider>
+                                <el-slider v-model="activeProfile.batch_size" :min="10" :max="200" :step="10" show-input></el-slider>
                             </el-form-item>
 
                             <el-form-item>
@@ -125,7 +146,7 @@ export default {
                                         </el-tooltip>
                                     </span>
                                 </template>
-                                <el-slider v-model="store.config.llm_settings.concurrent_workers" :min="1" :max="20" :step="1" show-input></el-slider>
+                                <el-slider v-model="activeProfile.concurrent_workers" :min="1" :max="20" :step="1" show-input></el-slider>
                             </el-form-item>
 
                             <el-form-item>
@@ -138,9 +159,9 @@ export default {
                                     </span>
                                 </template>
                                 <div style="display: flex; gap: 10px; align-items: center;">
-                                    <el-input-number v-model="store.config.llm_settings.timeout_settings.connect" :min="3" :max="60" :step="1" placeholder="连接" style="width: 100px;"></el-input-number>
+                                    <el-input-number v-model="activeProfile.timeout_settings.connect" :min="3" :max="60" :step="1" placeholder="连接" style="width: 100px;"></el-input-number>
                                     <span>/</span>
-                                    <el-input-number v-model="store.config.llm_settings.timeout_settings.read" :min="30" :max="1800" :step="10" placeholder="读取" style="width: 120px;"></el-input-number>
+                                    <el-input-number v-model="activeProfile.timeout_settings.read" :min="30" :max="1800" :step="10" placeholder="读取" style="width: 120px;"></el-input-number>
                                     <span style="color: #909399; font-size: 13px;">秒</span>
                                 </div>
                             </el-form-item>
@@ -156,7 +177,7 @@ export default {
                                 </template>
                                 <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
                                     <div style="background-color: #f5f7fa; padding: 10px 15px; border-radius: 4px; border: 1px solid #e4e7ed; color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.5; max-height: 150px; overflow-y: auto;">{{ fixedPrompt }}</div>
-                                    <el-input type="textarea" v-model="store.config.llm_settings.system_prompt" :rows="5"
+                                    <el-input type="textarea" v-model="activeProfile.system_prompt" :rows="5"
                                         placeholder="[在此输入附加的自定义风格和格式要求，例如：请输出双语字幕，第一行中文...]&#10;留空则使用内置的【高质量通用影视翻译】格式要求。"
                                     ></el-input>
                                 </div>
@@ -192,7 +213,46 @@ export default {
         const isFetchingModels = ref(false);
         const activeCollapse = ref([]); // 默认折叠状态
 
-        // 修复 Bug 3：解除翻译语言画地为牢的限制，支持全部语言并分组展示
+        const activeProfile = computed(() => {
+            const id = store.config.llm_settings.active_profile_id;
+            return store.config.llm_settings.profiles.find(p => p.id === id) || store.config.llm_settings.profiles[0];
+        });
+
+        // 方案管理逻辑
+        const handleProfileCommand = async (command) => {
+            const settings = store.config.llm_settings;
+            if (command === 'add') {
+                const newId = 'profile_' + Date.now();
+                const newProfile = JSON.parse(JSON.stringify(activeProfile.value));
+                newProfile.id = newId;
+                newProfile.name = '新方案_' + newId.substring(newId.length - 4);
+                settings.profiles.push(newProfile);
+                settings.active_profile_id = newId;
+                ElementPlus.ElMessage.success("已创建并切换到新方案，请修改配置后点击保存。");
+            } else if (command === 'rename') {
+                try {
+                    const { value } = await ElementPlus.ElMessageBox.prompt('请输入方案名称', '重命名方案', {
+                        inputValue: activeProfile.value.name,
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消'
+                    });
+                    if (value) activeProfile.value.name = value;
+                } catch (e) {}
+            } else if (command === 'delete') {
+                if (settings.profiles.length <= 1) {
+                    ElementPlus.ElMessage.warning("至少需要保留一个方案！");
+                    return;
+                }
+                try {
+                    await ElementPlus.ElMessageBox.confirm('确定要删除当前方案吗？', '警告', { type: 'warning' });
+                    const idx = settings.profiles.findIndex(p => p.id === settings.active_profile_id);
+                    settings.profiles.splice(idx, 1);
+                    settings.active_profile_id = settings.profiles[0].id;
+                    ElementPlus.ElMessage.success("方案已删除");
+                } catch (e) {}
+            }
+        };
+
         const pinnedCodes = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
         const pinnedLanguages = computed(() => store.dicts.languages.filter(l => pinnedCodes.includes(l.code)));
         const otherLanguages = computed(() => store.dicts.languages.filter(l => !pinnedCodes.includes(l.code)));
@@ -204,13 +264,13 @@ export default {
         });
 
         const refreshModels = async () => {
-            if (!store.config.llm_settings.api_key) {
+            if (!activeProfile.value.api_key) {
                 ElementPlus.ElMessage.warning("请先填写 API Key！");
                 return;
             }
             isFetchingModels.value = true;
             try {
-                const models = await getLlmModels(store.config.llm_settings.api_key, store.config.llm_settings.base_url);
+                const models = await getLlmModels(activeProfile.value.api_key, activeProfile.value.base_url);
                 store.dicts.llm_models = models;
                 ElementPlus.ElMessage.success(`成功拉取 ${models.length} 个可用对话模型！`);
             } catch (e) {
@@ -226,14 +286,15 @@ export default {
             try {
                 const res = await uploadAsset(options.file, 'srt', store.taskId, null);
                 store.taskId = res.task_id;
+                store.currentTaskName = options.file.name;
                 store.assets.hasOriginalSrt = true;
-                store.activeStep = 4; // 进度条跳到 LLM 翻译待命
+                store.activeStep = 4;
                 store.refreshTasksTrigger++;
-                addLog(`✅ 外部字幕上传成功！任务 ID: ${res.task_id}`, "success");
+                addLog(`✅ 外部字幕上传成功！任务 ID: \${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("生肉字幕上传成功，可以直接开始翻译！");
             } catch (e) {
-                addLog(`❌ 字幕上传失败: ${e.message}`, "error");
-                ElementPlus.ElMessage.error(`上传失败: ${e.message}`);
+                addLog(`❌ 字幕上传失败: \${e.message}`, "error");
+                ElementPlus.ElMessage.error(`上传失败: \${e.message}`);
             } finally {
                 isUploading.value = false;
             }
@@ -242,37 +303,39 @@ export default {
         const runTranslate = async () => {
             if (!store.taskId || !store.assets.hasOriginalSrt) return;
             
-            if (!store.config.llm_settings.api_key) {
+            if (!activeProfile.value.api_key) {
                 ElementPlus.ElMessage.warning("执行失败：请先填写大模型的 API Key！");
                 return;
             }
 
             store.isProcessing = true;
-            store.activeStep = 4; // 进度条更新：正在翻译
+            store.activeStep = 4;
             addLog("▶️ 启动大模型智能翻译流...", "info");
 
             connectTaskMonitor(
                 store.taskId,
                 () => {
                     store.assets.hasTranslatedSrt = true;
-                    store.activeStep = 5; // 整个流水线全部完成！
+                    store.activeStep = 5;
                     addLog("🎉 智能翻译全部完成！", "success");
                     ElementPlus.ElMessage.success("翻译成功！请点击右上角下载熟肉字幕。");
                 },
                 () => {}
             );
 
-            // 执行前单独触发落盘保存
             try { await updateConfig(store.config); } catch (e) {}
 
             try {
                 await executeTask(store.taskId, ["translate"], store.config);
             } catch (e) {
-                addLog(`请求启动翻译失败: ${e.message}`, "error");
+                addLog(`请求启动翻译失败: \${e.message}`, "error");
                 store.isProcessing = false;
             }
         };
 
-        return { store, isUploading, isFetchingModels, activeCollapse, pinnedLanguages, otherLanguages, fixedPrompt, refreshModels, handleSrtUpload, runTranslate };
+        return { 
+            store, isUploading, isFetchingModels, activeCollapse, pinnedLanguages, otherLanguages, fixedPrompt, 
+            activeProfile, handleProfileCommand, refreshModels, handleSrtUpload, runTranslate 
+        };
     }
 };

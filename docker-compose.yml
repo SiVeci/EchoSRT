@@ -21,6 +21,8 @@ services:
     volumes:
       - ./workspace:/app/workspace
       - ./models:/app/models
+      # (建议) 将外部媒体库/NAS 目录挂载进容器，以便使用“扫描媒体库”功能
+      # - /your/media/path:/mnt/media
       # (可选) 将配置目录挂载出来防止丢失
       # - ./config:/app/config
     restart: unless-stopped
@@ -50,6 +52,8 @@ services:
     volumes:
       - ./workspace:/app/workspace
       - ./models:/app/models
+      # (建议) 将外部媒体库/NAS 目录挂载进容器，以便使用“扫描媒体库”功能
+      # - /your/media/path:/mnt/media
       # - ./config:/app/config
     restart: unless-stopped
     # ========== 开启 NVIDIA 显卡支持 ==========

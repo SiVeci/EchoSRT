@@ -2,132 +2,49 @@
 sidebar_position: 1
 ---
 
-# 📂 任务工作区管理
+# 📁 任务工作区
 
-任务工作区是 EchoSRT 的核心资产管理模块，负责管理所有上传的视频/音频文件及其生成的产物。每个任务拥有独立的 `workspace/{task_id}/` 目录，所有资产文件与元数据均在此隔离存储。
+任务工作区是 EchoSRT 的核心管理枢纽，负责视频导入、任务调度、状态监视及产物下载。v1.1.0 版本对扫描引擎和资产管理进行了大幅增强。
 
 ---
 
-## 工作区目录结构
+## 视频导入方式
 
-```
-workspace/
-└── {task_id}/
-    ├── meta.json          # 任务元数据（基础名称、排序权重等）
-    ├── video.mp4          # 上传的原始视频（保留原始扩展名）
-    ├── audio.wav          # 提取或上传的音频（16kHz/mono WAV）
-    ├── original.srt       # 语音识别生成的原文字幕
-    └── translated.srt     # LLM 翻译生成的目标语言字幕
-```
+### 1. 拖拽/手动上传
+在任务列表上方区域，直接拖入视频或音频文件。系统将自动为其创建独立的 UUID 任务文件夹，并对音频执行 16kHz 重采样。
 
-## 核心功能
+### 2. 媒体库自动扫描 (v1.1.0 增强)
+您可以在“全局设置”中添加本地或 NAS 路径。
+- **高性能扫描**：基于单次全目录遍历算法，秒级识别数千个文件。
+- **广泛兼容**：支持 .mp4, .mkv, .wmv, .ts, .mp3, .m4a 等 20 余种主流格式。
+- **原地处理**：媒体库导入的文件不会被复制到工作区，而是建立软链接引用，节省磁盘空间。
 
-### 1. 上传文件
+---
 
-支持三种上传类型：
+## 资产管理与自愈
 
-| 类型 | 支持格式 | 后端处理 |
-|------|----------|----------|
-| 📹 **视频** | `.mp4`, `.mkv`, `.mov`, `.avi`, `.webm` 等 | 直接保存原始文件，文件名统一为 `video.{ext}` |
-| 🎵 **音频** | `.wav`, `.mp3`, `.m4a`, `.aac`, `.flac`, `.ogg`, `.wma` | 自动调用 FFmpeg 转码为 16kHz/mono WAV |
-| 📝 **字幕** | `.srt` | 保存为 `original.srt`，可跳过识别直接进入翻译 |
+### 磁盘状态自愈
+v1.1.0 引入了“以磁盘为准”的资产识别逻辑。
+- **无感复活**：如果您在工作区删除了一个来自媒体库的任务，该视频文件在下次“点击扫描”时会立即重新出现在“新发现”列表中。
+- **状态同步**：系统会实时穿透磁盘 `meta.json` 检查任务指纹，确保不会出现重复导入。
 
-> **路径安全**：所有 `task_id` 均经过 `sanitize_task_id()` 强制过滤，使用 `os.path.basename()` 防止路径遍历攻击。
+### 单一资产清理
+点击任务行的 **“资产包”** 标签，可以单独删除某个环节的产物（如删除 Wav 以释放空间）。
+- **保护机制**：对于媒体库映射的视频原文件，系统会禁止单独删除，以防止误伤您的原始素材库。
 
-### 2. 拖拽排序
+---
 
-前端使用 Sortable.js 实现任务卡片的拖拽排序。排序权重保存在 `meta.json` 的 `sort_weight` 字段中：
+## 任务监视与下载
 
-```json
-{
-  "base_name": "MyVideo",
-  "sort_weight": 3
-}
-```
+### 实时日志与焦点
+点击任务行的 **“监视”** 按钮，右侧控制台会立即切换至该任务。
+- **文件名感知**：页面顶部横幅将显示当前正在处理的**视频源文件名**。
+- **WebSocket 追踪**：即使关闭网页后再打开，只要任务在跑，连接后即可实时找回进度。
 
-排序规则：先按 `sort_weight` 降序，再按 `created_at` 降序。
+### 统一的高级下载 (v1.1.0)
+点击“下载原声”或“下载翻译”标签：
+- **精准命名**：下载的文件名将严格遵循 `{原文件名}_{语言代码}.srt`。
+- **进度可见**：内置浏览器级别的下载进度条，并实时显示 MB/s 下载速度。
 
-### 3. 资产状态指示
-
-每个任务卡片实时显示四类资产的可用状态：
-
-| 图标 | 状态 | 对应文件 | 检测逻辑 |
-|------|------|----------|----------|
-| 📹 | 视频就绪 | `video.*` 存在且 >5 bytes | `any(f.startswith("video.") and os.path.getsize(f) > 5)` |
-| 🎵 | 音频就绪 | `audio.wav` 存在且 >5 bytes | `os.path.getsize("audio.wav") > 5` |
-| 📝 | 原文字幕 | `original.srt` 存在且 >5 bytes | 同上 |
-| 🌍 | 翻译字幕 | `translated.srt` 存在且 >5 bytes | 同上 |
-
-> 📐 **>5 bytes 判定**：防止写入失败产生的空文件被误判为有效资产。
-
-### 4. 资产删除
-
-支持两种粒度：
-- **单资产删除**：删除 video/audio/original/translated 中的任一项（至少保留一份）
-- **整任务删除**：递归删除整个 `task_id` 目录，同时清理 `global_tasks_status` 和 WebSocket 状态
-
-**删除保护**：如果任务正在流水线中执行（`extracting`/`transcribing`/`translating`），两种删除操作均会被拒绝。
-
-### 5. 流水线启动
-
-在任务标签页可发起两种工作流：
-
-```javascript
-// 前端 main.js 中的智能步骤组装逻辑
-const steps = [];
-
-// 1. 如果有视频且没提取音频 → 必须先提音
-if (!store.assets.hasAudio && store.assets.hasVideo) steps.push("extract");
-
-// 2. 如果有音频或即将提取 → 加入识别步骤
-if (store.assets.hasAudio || steps.includes("extract")) {
-    if (!(includeTranslation && store.assets.hasOriginalSrt)) steps.push("transcribe");
-}
-
-// 3. 如果是全量工作流 → 加入翻译步骤
-if (includeTranslation) steps.push("translate");
-```
-
-## 断线重连机制
-
-EchoSRT 实现了任务执行状态的完整恢复：
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '20px 0' }}>
-  <div style={{ border: '1px solid var(--ifm-color-emphasis-300)', padding: '15px', borderRadius: '8px', width: '100%', maxWidth: '500px', textAlign: 'center' }}>
-    <b>1. localStorage 持久化</b><br/>保存 <code>task_id</code>
-  </div>
-  <div style={{ color: 'var(--ifm-color-primary)', fontSize: '20px', lineHeight: '1' }}>⬇</div>
-  <div style={{ border: '1px solid var(--ifm-color-emphasis-300)', padding: '15px', borderRadius: '8px', width: '100%', maxWidth: '500px', textAlign: 'center' }}>
-    <b>2. 页面初始化</b><br/>页面加载时触发 <code>restoreActiveTask()</code>
-  </div>
-  <div style={{ color: 'var(--ifm-color-primary)', fontSize: '20px', lineHeight: '1' }}>⬇</div>
-  <div style={{ border: '1px solid var(--ifm-color-emphasis-300)', padding: '15px', borderRadius: '8px', width: '100%', maxWidth: '500px', textAlign: 'center' }}>
-    <b>3. 恢复前端状态</b><br/><code>GET /api/tasks</code> → 恢复前端资产
-  </div>
-  <div style={{ color: 'var(--ifm-color-primary)', fontSize: '20px', lineHeight: '1' }}>⬇</div>
-  <div style={{ border: '1px solid var(--ifm-color-emphasis-300)', padding: '15px', borderRadius: '8px', width: '100%', maxWidth: '500px', textAlign: 'center' }}>
-    <b>4. 查询后端状态</b><br/><code>GET /api/tasks/:task_id/status</code> → 查询运行状态
-  </div>
-  <div style={{ color: 'var(--ifm-color-primary)', fontSize: '20px', lineHeight: '1' }}>⬇</div>
-  <div style={{ border: '2px solid var(--ifm-color-primary)', backgroundColor: 'var(--ifm-color-primary-lightest)', padding: '15px', borderRadius: '8px', width: '100%', maxWidth: '500px', textAlign: 'center' }}>
-    <b style={{ color: 'var(--ifm-color-primary-darkest)' }}>5. 无缝接管</b><br/>
-    <span style={{ color: 'var(--ifm-color-primary-darkest)' }}>若后端仍在处理 → 重建 WebSocket 连接，接管进度</span>
-  </div>
-</div>
-
-> ⚠️ **注意**：重连仅恢复进度流和日志输出。如果后端进程完全崩溃，任务需要重新提交。
-
-## API 端点参考
-
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| `GET` | `/api/tasks` | 获取所有任务列表 |
-| `GET` | `/api/tasks/{task_id}` | 获取单个任务状态 |
-| `POST` | `/api/tasks/{task_id}/upload/video` | 上传视频 |
-| `POST` | `/api/tasks/{task_id}/upload/audio` | 上传音频 |
-| `POST` | `/api/tasks/{task_id}/upload/srt` | 上传字幕 |
-| `DELETE` | `/api/tasks/{task_id}/assets/{type}` | 删除单个资产 |
-| `DELETE` | `/api/tasks/{task_id}` | 删除整个任务 |
-| `POST` | `/api/tasks/reorder` | 保存拖拽排序 |
-
-详细参数见 [REST API 参考](../api-reference/rest-api.mdx)。
+---
+*提示：工作区目录位于项目根目录下的 `/workspace` 文件夹，建议定期清理不再需要的旧任务。*

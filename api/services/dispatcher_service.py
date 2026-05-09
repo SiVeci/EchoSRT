@@ -3,7 +3,7 @@ import json
 from fastapi import HTTPException
 import asyncio
 from ..state import q_extract, q_transcribe, q_translate, global_tasks_status, global_downloading_models
-from .config_service import test_proxy, config_lock
+from .config_service import test_proxy, config_lock, resolve_active_profile
 
 async def dispatch_task(payload: dict):
     task_id = payload.get("task_id")
@@ -32,6 +32,12 @@ async def dispatch_task(payload: dict):
     enable_proxy = system_settings.get("enable_global_proxy", False)
     if enable_proxy and proxy_url:
         await asyncio.to_thread(test_proxy, proxy_url) # 防止阻塞主事件循环
+
+    # 注入激活的 API Profile 配置 (展平化以便 Worker 直接读取)
+    if "llm_settings" in payload:
+        payload["llm_settings"] = resolve_active_profile(payload["llm_settings"])
+    if "online_asr_settings" in payload:
+        payload["online_asr_settings"] = resolve_active_profile(payload["online_asr_settings"])
 
     global_tasks_status[task_id] = { "steps": steps, "current_step": "pending", "config": payload }
 

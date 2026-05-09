@@ -164,3 +164,111 @@ export const reorderTasks = async (taskIds) => {
     if (!res.ok) throw new Error("排序保存失败");
     return await res.json();
 };
+
+// --- 媒体库接口 ---
+export const getLibraryPaths = () => fetchGet('/api/library/paths');
+export const addLibraryPath = async (path) => {
+    const res = await fetch(`${API_BASE}/api/library/paths`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path })
+    });
+    if (!res.ok) {
+        let errMsg = "添加路径失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+export const deleteLibraryPath = async (path) => {
+    const res = await fetch(`${API_BASE}/api/library/paths`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path })
+    });
+    if (!res.ok) throw new Error("删除路径失败");
+    return await res.json();
+};
+export const scanLibrary = () => {
+    return fetch(`${API_BASE}/api/library/scan`, { method: "POST" }).then(res => res.json());
+};
+export const getDiscoveries = () => fetchGet('/api/library/discoveries');
+export const importFromLibrary = async (paths) => {
+    const res = await fetch(`${API_BASE}/api/library/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths })
+    });
+    if (!res.ok) {
+        let errMsg = "导入失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
+export const downloadAsset = async (taskId, assetType, baseName) => {
+    const url = `${window.location.origin}/api/download/${taskId}?type=${assetType}`;
+    if ('showSaveFilePicker' in window) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("获取文件流失败");
+            
+            let filename = baseName;
+            const disposition = response.headers.get('content-disposition');
+            if (disposition && disposition.includes('filename=')) {
+                filename = decodeURIComponent(disposition.split('filename=')[1].replace(/["']/g, ''));
+            } else if (disposition && disposition.includes('filename*=')) {
+                filename = decodeURIComponent(disposition.split("''")[1]);
+            } else {
+                if (assetType === 'video') filename += '.mp4';
+                else if (assetType === 'audio') filename += '.wav';
+                else if (assetType === 'original') filename += '.srt';
+                else if (assetType === 'translated') filename += '_translated.srt';
+            }
+
+            const handle = await window.showSaveFilePicker({ suggestedName: filename });
+            const writable = await handle.createWritable();
+            
+            const contentLength = response.headers.get('content-length');
+            const total = contentLength ? parseInt(contentLength, 10) : 0;
+            let loaded = 0;
+            const reader = response.body.getReader();
+            
+            const loading = ElementPlus.ElLoading.service({ lock: true, text: '⬇️ 正在保存至本地... [ 0% ]' });
+            let lastTime = Date.now();
+            let lastLoaded = 0;
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    await writable.write(value);
+                    loaded += value.length;
+                    
+                    const now = Date.now();
+                    if (now - lastTime > 500) {
+                        const speed = (((loaded - lastLoaded) / ((now - lastTime) / 1000)) / 1024 / 1024).toFixed(1);
+                        const percent = total ? Math.round((loaded / total) * 100) : '?';
+                        const loadingTextEl = document.querySelector('.el-loading-text');
+                        if (loadingTextEl) loadingTextEl.textContent = `⬇️ 正在保存至本地... [ ${percent}% ] (${speed} MB/s)`;
+                        lastTime = now;
+                        lastLoaded = loaded;
+                    }
+                }
+                await writable.close();
+                loading.close();
+                ElementPlus.ElMessage.success("✅ 文件保存成功！");
+            } catch (err) {
+                await writable.abort();
+                loading.close();
+                throw err;
+            }
+        } catch (err) {
+            if (err.name !== 'AbortError') ElementPlus.ElMessage.error("下载意外中断: " + err.message);
+        }
+    } else {
+        window.open(url, "_blank");
+        ElementPlus.ElNotification({ title: "下载指令已发送", message: "由于浏览器限制，请在原生下载管理器中查看进度。", type: "success" });
+    }
+};

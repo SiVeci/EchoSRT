@@ -1,6 +1,6 @@
-const { ref, watch } = Vue;
+const { ref, watch, computed } = Vue;
 import { store } from '../store.js';
-import { updateConfig, restoreConfig, testProxy } from '../api.js';
+import { getConfig, updateConfig, restoreConfig, testProxy, getLibraryPaths, addLibraryPath, deleteLibraryPath } from '../api.js';
 
 export default {
     name: 'GlobalSettings',
@@ -29,6 +29,33 @@ export default {
                         </el-button>
                     </div>
                 </div>
+            </div>
+
+            <el-divider border-style="dashed"></el-divider>
+
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: bold; color: #303133; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <el-icon style="font-size: 18px; color: #E6A23C;"><FolderOpened /></el-icon> 媒体库扫描管理
+                </div>
+                <div style="color: #909399; font-size: 13px; margin-bottom: 15px;">
+                    添加本地或 NAS 挂载目录，自动扫描视频文件。Docker 用户请确保已将目录挂载至容器内。
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <el-input v-model="newLibraryPath" placeholder="请输入绝对路径 (如 D:\\Movies 或 /mnt/media)" @keyup.enter="handleAddPath">
+                        <template #append>
+                            <el-button @click="handleAddPath" icon="Plus">添加路径</el-button>
+                        </template>
+                    </el-input>
+                </div>
+
+                <div v-if="libraryPaths.length > 0" style="border: 1px solid #ebeef5; border-radius: 4px; padding: 10px; background: #fafafa;">
+                    <div v-for="path in libraryPaths" :key="path" style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #eee;">
+                        <span style="font-size: 13px; color: #606266; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 480px;">{{ path }}</span>
+                        <el-button type="danger" link icon="Delete" @click="handleDeletePath(path)"></el-button>
+                    </div>
+                </div>
+                <el-empty v-else description="暂未配置扫描路径" :image-size="40" style="padding: 20px 0;"></el-empty>
             </div>
 
             <el-divider border-style="dashed"></el-divider>
@@ -146,6 +173,43 @@ export default {
             } catch (e) { if (e !== 'cancel') ElementPlus.ElMessage.error("恢复配置失败: " + (e.message || e)); }
         };
 
-        return { store, proxyEnabled, proxyProtocol, proxyHost, proxyPort, isTestingProxy, handleSwitchChange, handleInputChange, handleSaveConfig, handleRestoreConfig, handleTestProxy };
-    }
-};
+        // --- 媒体库扫描管理逻辑 ---
+        const libraryPaths = computed(() => store.config.library?.library_paths || []);
+        const newLibraryPath = ref("");
+
+        const handleAddPath = async () => {
+            const path = newLibraryPath.value.trim();
+            if (!path) return;
+            try {
+                const res = await addLibraryPath(path);
+                // 同步更新全局 store，确保后续“保存配置”时数据一致
+                if (store.config.library) {
+                    store.config.library.library_paths = res.paths;
+                }
+                newLibraryPath.value = "";
+                ElementPlus.ElMessage.success("扫描路径添加成功");
+            } catch (e) {
+                ElementPlus.ElMessage.error(e.message || "添加失败");
+            }
+        };
+
+        const handleDeletePath = async (path) => {
+            try {
+                const res = await deleteLibraryPath(path);
+                // 同步更新全局 store
+                if (store.config.library) {
+                    store.config.library.library_paths = res.paths;
+                }
+                ElementPlus.ElMessage.success("扫描路径已移除");
+            } catch (e) {
+                ElementPlus.ElMessage.error("移除失败");
+            }
+        };
+
+        return { 
+            store, proxyEnabled, proxyProtocol, proxyHost, proxyPort, isTestingProxy, 
+            handleSwitchChange, handleInputChange, handleSaveConfig, handleRestoreConfig, handleTestProxy,
+            libraryPaths, newLibraryPath, handleAddPath, handleDeletePath
+        };
+        }
+        };

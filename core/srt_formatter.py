@@ -26,9 +26,6 @@ def generate_srt(segments, output_srt_path: str, progress_callback=None):
             f.write(f"{start_time} --> {end_time}\n")
             f.write(f"{text}\n\n")
             
-            # 实时在控制台打印进度
-            print(f"[{start_time} -> {end_time}] {text}")
-            
             if progress_callback:
                 progress_callback(start_time, end_time, text)
             
