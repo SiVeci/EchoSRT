@@ -167,18 +167,19 @@ async def send_json(self, data: dict, task_id: str):
 
 ```python
 # api/services/config_service.py
-CONFIG_FILE = "config/config.json"
+CONFIG_PATH = "config/config.json"
 config_lock = asyncio.Lock()  # 文件读写锁
 
-async def load_config() -> dict:
+async def get_config() -> dict:
     async with config_lock:
-        with open(CONFIG_FILE, "r") as f:
+        with open(CONFIG_PATH, "r") as f:
             return json.load(f)
 
-async def save_config(config: dict):
+async def update_config(payload: dict):
     async with config_lock:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        # ... 原子写入逻辑 ...
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
 ```
 
 ### 状态分层对比

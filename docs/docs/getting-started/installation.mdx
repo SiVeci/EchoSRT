@@ -14,6 +14,8 @@ sidebar_position: 1
 | **NVIDIA Driver** (GPU 可选) | 525.60.13+ | CUDA 12 兼容驱动 |
 | **Node.js** (开发/文档) | 18+ | Docusaurus 文档构建 |
 
+> 💡 **FFmpeg 路径提示**：程序会优先使用项目目录下 `bin/ffmpeg/bin/` 中的二进制文件。如果你在 Linux 或 macOS 上手动放置该文件，请确保执行权限：`chmod +x bin/ffmpeg/bin/ffmpeg bin/ffmpeg/bin/ffprobe`。
+
 ## 方式一：Docker Compose（推荐）
 
 这是最推荐的一键部署方式，自动处理所有依赖：

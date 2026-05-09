@@ -44,14 +44,20 @@ Worker 从队列中取出 `config_payload` 后，按需读取对应的 settings 
 
 ## Worker 生命周期
 
-每个 Worker 是一个 **无限循环的异步守护协程**，在 `main.py` 启动时创建：
+每个 Worker 是一个 **无限循环的异步守护协程**，在 **`app.py`** 启动时创建（通过 `lifespan` 钩子）：
 
 ```python
-# main.py
-asyncio.create_task(worker_extract_loop())
-asyncio.create_task(worker_transcribe_loop())
-asyncio.create_task(worker_translate_loop())
+# app.py
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ...
+    asyncio.create_task(worker_extract_loop())
+    asyncio.create_task(worker_transcribe_loop())
+    asyncio.create_task(worker_translate_loop())
+    yield
 ```
+
+> ⚠️ **注意**：`main.py` 是独立 CLI 工具，采用传统的同步线性逻辑，不涉及此队列架构。
 
 ### Worker 通用模板
 
