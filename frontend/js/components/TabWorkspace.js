@@ -255,37 +255,53 @@ export default {
         watch(() => store.pipelineStatus, async (newVal, oldVal) => {
             if (!oldVal) return;
             const tasksToRefresh = [];
+            
+            // 1. 检测活跃任务的状态切换 (例如提取 -> 识别)
             for (const taskId in newVal) {
                 const currentStep = newVal[taskId]?.current_step;
                 const previousStep = oldVal[taskId]?.current_step;
                 
-                if (currentStep !== previousStep && ['pending_transcribe', 'transcribing', 'pending_translate', 'translating', 'completed', 'error'].includes(currentStep)) {
+                if (currentStep !== previousStep && ['pending_transcribe', 'transcribing', 'pending_translate', 'translating'].includes(currentStep)) {
                     tasksToRefresh.push(taskId);
                 }
             }
             
-            for (const taskId of tasksToRefresh) {
-                try {
-                    const latestData = await getTaskAssets(taskId);
-                    const targetIndex = taskList.value.findIndex(t => t.task_id === taskId);
-                    if (targetIndex !== -1) {
-                        // O(1) 局部精准更新，UI 绝对无闪烁
-                        taskList.value[targetIndex].has_video = latestData.has_video;
-                        taskList.value[targetIndex].has_audio = latestData.has_audio;
-                        taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
-                        taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
-                    }
-                    
-                    // 同步更新焦点任务资产，修复 Bug 1：实现下载按钮按阶段依次点亮
-                    if (taskId === store.taskId) {
-                        store.assets.hasVideo = latestData.has_video;
-                        store.assets.hasAudio = latestData.has_audio;
-                        store.assets.hasOriginalSrt = latestData.has_original_srt;
-                        store.assets.hasTranslatedSrt = latestData.has_translated_srt;
-                    }
-                } catch (e) {
-                    console.warn(`[局部刷新] 无法获取任务 ${taskId} 的最新资产状态`, e);
+            // 2. 补丁：检测生命周期结束的任务 (Completed/Error)
+            // 后端 API /pipeline/status 会过滤掉 completed 和 error 的任务。
+            // 因此当任务真正完成时，它会从 newVal 中消失。我们需要检测这种“消失”来刷新它的最终资产。
+            for (const taskId in oldVal) {
+                if (!newVal[taskId] && !tasksToRefresh.includes(taskId)) {
+                    tasksToRefresh.push(taskId);
                 }
+            }
+            
+            if (tasksToRefresh.length > 0) {
+                // 增加 1.5 秒延迟，确保后端文件系统彻底落盘并刷新目录元数据，避免因 size 为 0 导致判断失败
+                setTimeout(async () => {
+                    for (const taskId of tasksToRefresh) {
+                        try {
+                            const latestData = await getTaskAssets(taskId);
+                            const targetIndex = taskList.value.findIndex(t => t.task_id === taskId);
+                            if (targetIndex !== -1) {
+                                // O(1) 局部精准更新，UI 绝对无闪烁
+                                taskList.value[targetIndex].has_video = latestData.has_video;
+                                taskList.value[targetIndex].has_audio = latestData.has_audio;
+                                taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
+                                taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
+                            }
+                            
+                            // 同步更新焦点任务资产，修复 Bug 1：实现下载按钮按阶段依次点亮
+                            if (taskId === store.taskId) {
+                                store.assets.hasVideo = latestData.has_video;
+                                store.assets.hasAudio = latestData.has_audio;
+                                store.assets.hasOriginalSrt = latestData.has_original_srt;
+                                store.assets.hasTranslatedSrt = latestData.has_translated_srt;
+                            }
+                        } catch (e) {
+                            console.warn(`[局部刷新] 无法获取任务 ${taskId} 的最新资产状态`, e);
+                        }
+                    }
+                }, 1500);
             }
         });
 

@@ -64,5 +64,7 @@ os.makedirs(WORKSPACE_DIR, exist_ok=True)
 app.mount("/", StaticFiles(directory=os.path.join(os.getcwd(), "frontend"), html=True), name="frontend")
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False, log_level="warning")

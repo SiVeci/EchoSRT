@@ -4,7 +4,7 @@ export const WS_BASE = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 
 // --- 通用 GET 请求 ---
 async function fetchGet(endpoint) {
-    const res = await fetch(`${API_BASE}${endpoint}`);
+    const res = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     return await res.json();
 }

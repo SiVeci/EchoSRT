@@ -1,15 +1,31 @@
 import os
 import asyncio
+from multiprocessing import Process, Queue
+from queue import Empty
 
 from ..state import q_transcribe, q_translate, global_tasks_status
 from ..ws_manager import manager
 
-from core.whisper_engine import transcribe_audio, unload_model
+from core.whisper_engine import worker_process_loop, transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
 from core.api_transcribe import run_api_transcription
 from faster_whisper.utils import _MODELS
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
+
+# 全局进程状态
+whisper_process = None
+whisper_task_queue = None
+whisper_result_queue = None
+
+def ensure_worker_running():
+    global whisper_process, whisper_task_queue, whisper_result_queue
+    if whisper_process is None or not whisper_process.is_alive():
+        print("[进程管理] 启动新的 Whisper 推理子进程...")
+        whisper_task_queue = Queue()
+        whisper_result_queue = Queue()
+        whisper_process = Process(target=worker_process_loop, args=(whisper_task_queue, whisper_result_queue), daemon=True)
+        whisper_process.start()
 
 def get_hf_repo_id(model_size: str) -> str:
     if isinstance(_MODELS, dict):
@@ -37,13 +53,13 @@ async def monitor_download(task_id: str, download_root: str, model_size: str):
         while True:
             current_size = await asyncio.to_thread(get_folder_size, target_folder)
             mb_size = current_size / (1024 * 1024)
-            
+
             msg = {
-                "status": "processing", 
-                "step": "downloading", 
+                "status": "processing",
+                "step": "downloading",
                 "downloaded_mb": round(mb_size, 1)
             }
-            
+
             await manager.send_json(msg, task_id)
             await asyncio.sleep(1)
     except asyncio.CancelledError:
@@ -52,17 +68,14 @@ async def monitor_download(task_id: str, download_root: str, model_size: str):
         print(f"[监控线程异常] {e}")
 
 async def worker_transcribe_loop():
+    global whisper_task_queue, whisper_result_queue, whisper_process
     loop = asyncio.get_running_loop()
-    while True:
-        try:
-            task_id, config_payload = await asyncio.wait_for(q_transcribe.get(), timeout=300.0)
-        except asyncio.TimeoutError:
-            await loop.run_in_executor(None, unload_model)
-            continue
 
+    while True:
+        task_id, config_payload = await q_transcribe.get()
         steps = config_payload.get("steps", [])
         task_dir = os.path.join(WORKSPACE_DIR, task_id)
-        
+
         if task_id in global_tasks_status:
             if global_tasks_status[task_id].get("current_step") in ["transcribing", "translating"]:
                 print(f"[识别车间] 任务 {task_id} 已在后续处理中，忽略并发抢占。")
@@ -71,48 +84,85 @@ async def worker_transcribe_loop():
             global_tasks_status[task_id]["current_step"] = "transcribing"
 
         try:
-            # [防呆] 流水线倒车清理：重新识别原声前，必须作废下游的旧翻译产物
             old_translated_path = os.path.join(task_dir, "translated.srt")
             if os.path.exists(old_translated_path):
                 try: os.remove(old_translated_path)
                 except Exception: pass
-                
+
             audio_path = os.path.join(task_dir, "audio.wav")
             if not os.path.exists(audio_path):
                 raise Exception("缺少 audio.wav 文件，无法执行语音识别。")
-                
+
             output_srt = os.path.join(task_dir, "original.srt")
             transcribe_settings = config_payload.get("transcribe_settings", {})
             system_settings = config_payload.get("system_settings", {})
             engine = transcribe_settings.get("engine", "local")
-            
+
             if engine == "api":
                 online_asr_settings = config_payload.get("online_asr_settings", {})
                 def api_progress_callback(msg_text):
                     msg = {"status": "processing", "step": "transcribing", "message": msg_text}
                     asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
                 await loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, system_settings, api_progress_callback)
-                
+
             else:
                 model_settings = config_payload.get("model_settings", {})
                 vad_settings = config_payload.get("vad_settings", {})
-                
-                await manager.send_json({"status": "processing", "step": "downloading", "message": "正在读取或下载模型..."}, task_id)
+
+                # 确保子进程存活
+                ensure_worker_running()
+
                 monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
 
-                try:
-                    segments = await loop.run_in_executor(None, transcribe_audio, audio_path, model_settings, transcribe_settings, vad_settings, system_settings)
-                finally:
-                    monitor_task.cancel()
-                    
-                await manager.send_json({"status": "processing", "step": "transcribing", "message": "模型加载完毕，开始语音识别..."}, task_id)
+                # 向子进程投递任务
+                whisper_task_queue.put((
+                    task_id,
+                    audio_path,
+                    output_srt,
+                    model_settings,
+                    transcribe_settings,
+                    vad_settings,
+                    system_settings
+                ))
 
-                def progress_callback(start_time, end_time, text):
-                    msg = {"status": "processing", "step": "transcribing", "progress": f"{start_time} -> {end_time}", "text": text}
-                    asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
-                    
-                await loop.run_in_executor(None, generate_srt, segments, output_srt, progress_callback)
+                # 开始在主进程阻塞读取消息，直到收到 done 或 error
+                process_error = None
+                while True:
+                    try:
+                        # 0.5 秒超时轮询，避免完全卡死线程，同时能够响应取消或其他事件
+                        msg = await loop.run_in_executor(None, whisper_result_queue.get, True, 0.5)
+                        msg_type = msg.get("type")
+                        if msg.get("task_id") != task_id:
+                            continue # 忽略残留的旧消息
 
+                        if msg_type == "status":
+                            # 如果子进程报告开始读取/下载模型，则前端显示进度
+                            if "正在读取" in msg.get("message", ""):
+                                pass # monitor_task is running
+                            elif "模型加载完毕" in msg.get("message", ""):
+                                monitor_task.cancel()
+                            await manager.send_json({"status": "processing", "step": "transcribing", "message": msg.get("message")}, task_id)
+                        elif msg_type == "progress":
+                            await manager.send_json({"status": "processing", "step": "transcribing", "progress": msg.get("progress"), "text": msg.get("text")}, task_id)
+                        elif msg_type == "error":
+                            process_error = Exception(msg.get("message"))
+                            monitor_task.cancel()
+                            break
+                        elif msg_type == "done":
+                            monitor_task.cancel()
+                            break
+                    except Empty:
+                        # 检查进程是否意外死亡
+                        if not whisper_process.is_alive():
+                            process_error = Exception("Whisper 推理子进程意外崩溃！(可能发生了 Segmentation Fault 或 Out of Memory)")
+                            monitor_task.cancel()
+                            break
+                        await asyncio.sleep(0) # 让出控制权
+
+                if process_error:
+                    raise process_error
+
+            # 下游处理
             if "translate" in steps:
                 if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_translate"
                 await q_translate.put((task_id, config_payload))
@@ -122,7 +172,6 @@ async def worker_transcribe_loop():
 
         except Exception as e:
             print(f"[识别车间错误] {e}")
-            # 清道夫：如果出错，清理可能残留的损坏文件
             err_srt_path = os.path.join(task_dir, "original.srt")
             if os.path.exists(err_srt_path):
                 try: os.remove(err_srt_path)

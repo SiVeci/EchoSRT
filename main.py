@@ -145,4 +145,6 @@ def main():
             print(f"[*] 已清理临时音频文件: {temp_audio_path}")
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()
