@@ -27,6 +27,21 @@ def ensure_worker_running():
         whisper_process = Process(target=worker_process_loop, args=(whisper_task_queue, whisper_result_queue), daemon=True)
         whisper_process.start()
 
+def force_kill_worker():
+    """向子进程发送毒丸强制回收，用于清理模型文件或资源重置"""
+    global whisper_process, whisper_task_queue
+    if whisper_process is not None and whisper_process.is_alive():
+        print("[进程管理] 收到强制关闭指令，正在关闭 Whisper 子进程并释放物理句柄...")
+        try:
+            if whisper_task_queue is not None:
+                whisper_task_queue.put(None) # 发送毒丸
+            whisper_process.join(timeout=3.0) # 等待优雅退出
+            if whisper_process.is_alive():
+                whisper_process.terminate() # 强杀
+            print("[进程管理] 子进程已彻底销毁。")
+        except Exception as e:
+            print(f"[进程管理] 销毁子进程时发生异常: {e}")
+
 def get_hf_repo_id(model_size: str) -> str:
     if isinstance(_MODELS, dict):
         return _MODELS.get(model_size, model_size)

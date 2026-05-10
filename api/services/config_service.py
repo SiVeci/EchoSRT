@@ -11,7 +11,6 @@ from fastapi import HTTPException
 from faster_whisper import available_models
 from faster_whisper.utils import _MODELS
 from ..state import global_tasks_status, global_downloading_models
-from core.whisper_engine import get_current_model_size, unload_model
 
 SUPPORTED_LANGUAGES = {
     "af": "afrikaans", "am": "amharic", "ar": "arabic", "as": "assamese", "az": "azerbaijani", 
@@ -87,7 +86,9 @@ def _migrate_config_internal(config: dict) -> bool:
             "batch_size": old_llm.get("batch_size", 100),
             "concurrent_workers": old_llm.get("concurrent_workers", 3),
             "system_prompt": old_llm.get("system_prompt", ""),
-            "timeout_settings": old_llm.get("timeout_settings", {"connect": 15, "read": 300})
+            "timeout_settings": old_llm.get("timeout_settings", {"connect": 15, "read": 300}),
+            "max_tokens": old_llm.get("max_tokens", 8192),
+            "temperature": old_llm.get("temperature", 1.0)
         }
         config["llm_settings"] = {
             "active_profile_id": "default",
@@ -277,12 +278,14 @@ def get_models():
     ]
 
 def delete_model(model_id: str):
+    from ..workers.transcribe import force_kill_worker
     for task in global_tasks_status.values():
         if task.get("current_step") in ["pending_transcribe", "transcribing"]:
             raise HTTPException(status_code=400, detail="当前有任务正在识别队列中，为防止崩溃，请等待识别完成后再执行删除！")
             
-    if get_current_model_size() == model_id:
-        unload_model()
+    # 因为进程隔离，主进程无法判断当前子进程具体加载了哪个模型，
+    # 且既然安全锁已确认无识别任务在跑，最安全的做法是直接销毁存活的子进程，彻底释放所有文件句柄锁。
+    force_kill_worker()
         
     download_root = "models"
     try:

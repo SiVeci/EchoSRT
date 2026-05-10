@@ -6,7 +6,6 @@ import asyncio
 import traceback
 import openai
 from openai import AsyncOpenAI, APIStatusError, APIConnectionError
-from api.services.config_service import SUPPORTED_LANGUAGES
 
 DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
 1. **自然流畅**：符合目标语言母语者的表达习惯。
@@ -21,7 +20,7 @@ def parse_srt(content: str) -> list:
     blocks = content.split('\n\n')
     return [b.strip() for b in blocks if b.strip()]
 
-async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, previous_context="", progress_callback=None):
+async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, previous_context="", progress_callback=None, temperature=1.0, max_tokens=8192):
     """
     发送单个分块进行翻译 (异步并发)
     """
@@ -39,14 +38,22 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content}
                 ],
-                temperature=1.0,
-                max_tokens=4096,
+                temperature=temperature,
+                max_tokens=max_tokens,
                 stream=False
             )
 
-            if not completion.choices or not completion.choices[0].message.content:
+            if not completion.choices:
+                raise Exception(f"大模型未返回任何 choices。响应: {completion}")
+                
+            choice = completion.choices[0]
+            if choice.finish_reason == 'length':
+                raise Exception(f"大模型生成的上下文长度超出限制 (max_tokens 耗尽)。【原因】：可能是翻译文本过长，或者你使用的是带深度思考 (Reasoning) 的模型，思考过程耗尽了配额。请尝试在设置中调低「翻译批次大小 (Batch Size)」，或适当调大 max_tokens 的值。")
+                
+            if not choice.message.content:
                 raise Exception(f"大模型返回了空内容或遇到了安全拦截。响应: {completion}")
-            translated_text = completion.choices[0].message.content
+                
+            translated_text = choice.message.content
             translated_text = re.sub(r'<think>.*?</think>', '', translated_text, flags=re.DOTALL)
             translated_text = translated_text.replace("```srt", "").replace("```", "").strip()
             
@@ -119,6 +126,7 @@ async def run_llm_translation(
     
     actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
     
+    from api.services.config_service import SUPPORTED_LANGUAGES
     lang_name = SUPPORTED_LANGUAGES.get(target_language_code, target_language_code).capitalize()
 
     fixed_role_and_lang = f"你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【{lang_name}】。\n\n"
@@ -216,7 +224,9 @@ async def run_llm_translation(
                     semaphore=semaphore,
                     progress_state=progress_state,
                     previous_context=prev_context,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    temperature=float(llm_config.get("temperature", 1.0)),
+                    max_tokens=int(llm_config.get("max_tokens", 8192))
                 )
             )
             

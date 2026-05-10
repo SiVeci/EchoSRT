@@ -71,23 +71,26 @@ global_tasks_status = {
 | `"pending_extract"` | 已推入 q_extract，等待 Worker 消费 | `dispatcher_service.py` |
 | `"extracting"` | Worker Extract 正在执行 FFmpeg | `workers/extract.py` |
 | `"pending_transcribe"` | 已推入 q_transcribe，等待 Worker 消费 | `workers/extract.py` |
-| `"transcribing"` | Worker Transcribe 正在执行语音识别 | `workers/transcribe.py` |
+| `"transcribing"` | Worker Transcribe 正在执行语音识别 (子进程) | `workers/transcribe.py` |
 | `"downloading"` | 正在从 HuggingFace 下载 Whisper 模型 | `workers/transcribe.py` |
 | `"pending_translate"` | 已推入 q_translate，等待 Worker 消费 | `workers/transcribe.py` |
 | `"translating"` | Worker Translate 正在执行 LLM 翻译 | `workers/translate.py` |
-| `"completed"` | 任务成功完成 | 各 Worker |
-| `"error"` | 任务执行失败 | 各 Worker except 块 |
+| `"completed"` | 任务成功完成 (后端已过滤) | 各 Worker |
+| `"error"` | 任务执行失败 (后端已过滤) | 各 Worker except 块 |
 
 ### 状态读/写路径
+
+v1.1.1 引入了多进程隔离架构，Whisper 推理运行在独立的子进程中。
+主进程通过 IPC 队列下发指令，并监听子进程回传的进度信号。
 
 ```
   写入                      读取
   ────                      ────
-  dispatcher_service ─┐     GET /api/tasks/{task_id}/status
-                      │                   │
-  worker_extract ─────┤              config_service
-  worker_transcribe ──┤                   │
-  worker_translate ───┘             前端 HTTP 轮询 (1s)
+  FastAPI 主进程 ─┐         GET /api/tasks/{task_id}/status
+                  │                   │
+  Worker 子进程 ──┤              config_service
+                  │                   │
+  Worker 协程 ────┘             前端 HTTP 轮询 (1s)
                                           │
                                     tabs.js 各组件
 ```

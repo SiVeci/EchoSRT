@@ -152,6 +152,30 @@ export default {
                             <el-form-item>
                                 <template #label>
                                     <span style="display: inline-flex; align-items: center;">
+                                        Max Tokens
+                                        <el-tooltip content="大模型单次返回的最大 Token 数量。带深度思考的模型需要留出充足的空间，建议设为 8192。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-input-number v-model="activeProfile.max_tokens" :min="1024" :max="131072" :step="1024" style="width: 150px;"></el-input-number>
+                            </el-form-item>
+
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
+                                        Temperature
+                                        <el-tooltip content="控制大模型输出的随机性。数值越低越严谨，越高越发散。翻译任务通常建议保持 1.0 或适当降低。" placement="top" trigger="click">
+                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                        </el-tooltip>
+                                    </span>
+                                </template>
+                                <el-slider v-model="activeProfile.temperature" :min="0" :max="2.0" :step="0.1" show-input></el-slider>
+                            </el-form-item>
+
+                            <el-form-item>
+                                <template #label>
+                                    <span style="display: inline-flex; align-items: center;">
                                         网络超时设置
                                         <el-tooltip content="左侧: 连接超时(秒)；右侧: 等待模型响应的最长超时(秒)。遇到极慢的模型时请调大右侧数值以防止假死报错。" placement="top" trigger="click">
                                             <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
