@@ -1,12 +1,11 @@
 import os
 import json
 import shutil
-import urllib.request
-import urllib.error
 import socket
 import urllib.parse
 import subprocess
 import asyncio
+import httpx
 from fastapi import HTTPException
 from faster_whisper import available_models
 from faster_whisper.utils import _MODELS
@@ -57,6 +56,7 @@ def set_global_proxy(system_settings: dict):
             print("[*] 全局代理总闸已关闭，恢复纯净直连模式。")
 
 config_lock = asyncio.Lock()
+_background_tasks = set()
 
 def get_system_info():
     if shutil.which("nvidia-smi"):
@@ -357,6 +357,8 @@ async def start_model_download(model_id: str, payload: dict):
             except Exception: pass
                 
         monitor_task = asyncio.create_task(_monitor())
+        _background_tasks.add(monitor_task)
+        monitor_task.add_done_callback(_background_tasks.discard)
         try:
             await loop.run_in_executor(None, lambda: snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies))
             global_downloading_models.pop(model_id, None)
@@ -371,7 +373,9 @@ async def start_model_download(model_id: str, payload: dict):
             monitor_active = False
             monitor_task.cancel()
 
-    asyncio.create_task(_download_task())
+    task = asyncio.create_task(_download_task())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return {"message": "后台下载已启动", "model_id": model_id}
 
 def get_download_status():
@@ -379,18 +383,20 @@ def get_download_status():
 
 def _fetch_openai_models(api_key: str, base_url: str, filter_keywords=None):
     if not api_key: raise HTTPException(status_code=400, detail="请先填写 API Key")
-    req = urllib.request.Request(f"{base_url.strip().rstrip('/')}/models")
-    req.add_header("accept", "application/json")
-    req.add_header("authorization", f"Bearer {api_key}")
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode('utf-8'))
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(
+                f"{base_url.strip().rstrip('/')}/models",
+                headers={"accept": "application/json", "authorization": f"Bearer {api_key}"}
+            )
+            response.raise_for_status()
+            data = response.json()
             model_ids = [m["id"] for m in data.get("data", []) if "id" in m]
             if filter_keywords:
                 filtered = [m for m in model_ids if any(kw in m.lower() for kw in filter_keywords)]
                 return filtered if filtered else model_ids
             return model_ids
-    except urllib.error.HTTPError as e: raise HTTPException(status_code=e.code, detail=f"获取失败: {e.read().decode('utf-8')}")
+    except httpx.HTTPStatusError as e: raise HTTPException(status_code=e.response.status_code, detail=f"获取失败: {e.response.text}")
     except Exception as e: raise HTTPException(status_code=400, detail=f"拉取模型列表异常: {str(e)}")
 
 def get_llm_models(api_key: str, base_url: str):

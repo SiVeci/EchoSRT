@@ -3,7 +3,6 @@ import hashlib
 import json
 import platform
 from pathlib import Path
-from typing import List, Dict, Set
 from .config_service import get_config
 from ..state import global_library_discoveries
 
@@ -27,7 +26,7 @@ def generate_fingerprint(file_path: Path) -> str:
     except Exception:
         return ""
 
-def get_active_fingerprints() -> Set[str]:
+def get_active_fingerprints() -> set[str]:
     """实时扫描工作区，获取所有已导入任务的指纹"""
     active_fps = set()
     workspace_dir = os.path.join(os.getcwd(), "workspace")
@@ -50,7 +49,7 @@ def get_active_fingerprints() -> Set[str]:
         print(f"[!] 扫描工作区指纹失败: {str(e)}")
     return active_fps
 
-async def scan_library() -> List[dict]:
+async def scan_library() -> list[dict]:
     """执行媒体库全量扫描 (优化版：单次遍历 + 磁盘状态自愈)"""
     config = await get_config()
     library_config = config.get("library", {})
@@ -108,7 +107,7 @@ async def scan_library() -> List[dict]:
                         
     return new_discoveries
 
-def get_all_discoveries() -> List[dict]:
+def get_all_discoveries() -> list[dict]:
     """获取所有已发现的文件列表"""
     return list(global_library_discoveries.values())
 

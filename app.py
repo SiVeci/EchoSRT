@@ -12,6 +12,8 @@ from api.routers import config, tasks, ws, library
 from api.services import config_service
 from api.workers import worker_extract_loop, worker_transcribe_loop, worker_translate_loop
 
+_worker_tasks = set()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 针对本地直接运行 app.py 的用户：在启动前自动生成配置文件
@@ -30,10 +32,12 @@ async def lifespan(app: FastAPI):
         print(f"[警告] 启动时设置全局代理失败: {e}")
         
     # 启动后台常驻的 Worker 任务车间
-    asyncio.create_task(worker_extract_loop())
-    asyncio.create_task(worker_transcribe_loop())
-    asyncio.create_task(worker_translate_loop())
+    t1 = asyncio.create_task(worker_extract_loop())
+    t2 = asyncio.create_task(worker_transcribe_loop())
+    t3 = asyncio.create_task(worker_translate_loop())
+    _worker_tasks.update([t1, t2, t3])
     yield
+    _worker_tasks.clear()
 
 class EndpointFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -66,5 +70,6 @@ app.mount("/", StaticFiles(directory=os.path.join(os.getcwd(), "frontend"), html
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
+    multiprocessing.set_start_method("spawn", force=True)
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False, log_level="warning")

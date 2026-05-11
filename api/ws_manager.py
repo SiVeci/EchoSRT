@@ -1,5 +1,4 @@
 import asyncio
-from typing import Dict, List
 from fastapi import WebSocket
 
 class ConnectionManager:
@@ -8,11 +7,11 @@ class ConnectionManager:
     """
     def __init__(self):
         # 存储活跃的 WebSocket 连接（一对多广播）
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.active_connections: dict[str, list[WebSocket]] = {}
         # 为每个任务的 WebSocket 连接提供一个锁，防止并发写入
-        self.locks: Dict[str, asyncio.Lock] = {}
+        self.locks: dict[str, asyncio.Lock] = {}
         # 缓存每个任务的最新状态，用于 HTTP 轮询
-        self.task_states: Dict[str, dict] = {}
+        self.task_states: dict[str, dict] = {}
 
     async def connect(self, websocket: WebSocket, task_id: str):
         """接受新的 WebSocket 连接并进行注册"""

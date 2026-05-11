@@ -51,3 +51,6 @@ env/
 dev.nix
 TODO.md
 .clinerules
+requirements_test.txt
+tox.ini
+tests/

@@ -1,4 +1,3 @@
-from typing import List
 from fastapi import APIRouter, UploadFile, File, Form, Body, HTTPException
 from fastapi.responses import FileResponse
 from ..services import workspace_service, dispatcher_service
@@ -35,5 +34,5 @@ def delete_task_asset(task_id: str, asset_type: str):
     return workspace_service.delete_single_asset(task_id, asset_type)
 
 @router.post("/tasks/reorder")
-def reorder_tasks(task_ids: List[str] = Body(...)):
+def reorder_tasks(task_ids: list[str] = Body(...)):
     return workspace_service.reorder_tasks(task_ids)
