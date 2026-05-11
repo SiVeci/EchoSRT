@@ -96,14 +96,28 @@
           <el-col :span="16">
             
             <!-- 全局操作条 (Global Action Bar) -->
-            <div class="global-action-bar">
-              <div style="color: #606266; font-size: 14px;">
-                当前处理任务: 
-                <el-tag :type="store.taskId ? 'success' : 'info'" effect="dark">
-                  {{ store.currentTaskName ? store.currentTaskName : (store.taskId ? store.taskId.split('-')[0] + '...' : '未创建或未选择') }}
-                </el-tag>
+            <div class="global-action-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap;">
+              <div style="color: #606266; font-size: 14px; display: flex; align-items: center; min-width: 0; flex: 1; margin-right: 15px; overflow: hidden;">
+                <span style="white-space: nowrap; margin-right: 5px; flex-shrink: 0;">当前处理任务: </span>
+                <div style="flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center;">
+                  <el-tooltip 
+                    :content="store.currentTaskName ? store.currentTaskName : (store.taskId ? store.taskId : '未创建或未选择')" 
+                    placement="top"
+                    :disabled="!store.currentTaskName && !store.taskId"
+                  >
+                    <el-tag 
+                      :type="store.taskId ? 'success' : 'info'" 
+                      effect="dark"
+                      style="max-width: 100%; display: inline-flex; align-items: center; vertical-align: middle; justify-content: flex-start;"
+                    >
+                      <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ store.currentTaskName ? store.currentTaskName : (store.taskId ? store.taskId.split('-')[0] + '...' : '未创建或未选择') }}
+                      </span>
+                    </el-tag>
+                  </el-tooltip>
+                </div>
               </div>
-              <div style="display: flex; gap: 15px; align-items: center;">
+              <div style="display: flex; gap: 15px; align-items: center; flex-shrink: 0;">
                 <el-button type="info" text circle @click="store.showGlobalSettings = true" title="全局设置" style="margin-right: 5px; font-size: 22px;">
                   <el-icon><Setting /></el-icon>
                 </el-button>

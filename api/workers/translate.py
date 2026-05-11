@@ -1,7 +1,7 @@
 import os
 import asyncio
 
-from ..state import q_translate, global_tasks_status
+from ..state import q_translate, global_tasks_status, global_cancel_events
 from ..ws_manager import manager
 import json
 
@@ -12,6 +12,9 @@ WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 async def process_translate_task(task_id, config_payload, loop):
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     
+    if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
+        return
+
     if task_id in global_tasks_status:
         if global_tasks_status[task_id].get("current_step") == "translating":
             print(f"[翻译车间] 任务 {task_id} 已在处理中，忽略并发抢占。")
@@ -32,7 +35,9 @@ async def process_translate_task(task_id, config_payload, loop):
             loop.create_task(manager.send_json(msg, task_id))
             
         await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
-        await run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback)
+        
+        cancel_event = global_cancel_events.get(task_id)
+        await run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback, cancel_event)
 
         # [薛定谔修复] 将当时使用的目标语种固化到该任务专属的 meta.json 中
         target_lang = llm_config.get("target_language", "zh")
@@ -46,6 +51,14 @@ async def process_translate_task(task_id, config_payload, loop):
 
         if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
         await manager.send_json({"status": "completed", "step": "done", "message": "全量任务流水线完美收官！"}, task_id)
+
+    except asyncio.CancelledError:
+        print(f"[翻译车间] 任务 {task_id} 被手动中断")
+        err_translated_path = os.path.join(task_dir, "translated.srt")
+        if os.path.exists(err_translated_path):
+            try: os.remove(err_translated_path)
+            except: pass
+        await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:
         print(f"[翻译车间错误] {e}")

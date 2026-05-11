@@ -3,7 +3,7 @@ import asyncio
 from multiprocessing import Process, Queue
 from queue import Empty
 
-from ..state import q_transcribe, q_translate, global_tasks_status
+from ..state import q_transcribe, q_translate, global_tasks_status, global_cancel_events
 from ..ws_manager import manager
 
 from core.whisper_engine import worker_process_loop, transcribe_audio, unload_model
@@ -29,18 +29,25 @@ def ensure_worker_running():
 
 def force_kill_worker():
     """向子进程发送毒丸强制回收，用于清理模型文件或资源重置"""
-    global whisper_process, whisper_task_queue
-    if whisper_process is not None and whisper_process.is_alive():
-        print("[进程管理] 收到强制关闭指令，正在关闭 Whisper 子进程并释放物理句柄...")
-        try:
-            if whisper_task_queue is not None:
-                whisper_task_queue.put(None) # 发送毒丸
-            whisper_process.join(timeout=3.0) # 等待优雅退出
-            if whisper_process.is_alive():
-                whisper_process.terminate() # 强杀
-            print("[进程管理] 子进程已彻底销毁。")
-        except Exception as e:
-            print(f"[进程管理] 销毁子进程时发生异常: {e}")
+    global whisper_process, whisper_task_queue, whisper_result_queue
+    if whisper_process is not None:
+        if whisper_process.is_alive():
+            print("[进程管理] 收到强制关闭指令，正在关闭 Whisper 子进程并释放物理句柄...")
+            try:
+                if whisper_task_queue is not None:
+                    whisper_task_queue.put(None) # 发送毒丸
+                whisper_process.join(timeout=1.0) # 等待优雅退出
+                if whisper_process.is_alive():
+                    whisper_process.terminate() # 强杀
+                    whisper_process.join(timeout=1.0) # 阻塞等待进程真正死亡
+                print("[进程管理] 子进程已彻底销毁。")
+            except Exception as e:
+                print(f"[进程管理] 销毁子进程时发生异常: {e}")
+        
+        # 无论如何，彻底切断指针引用，防止后续排队任务误用死进程
+        whisper_process = None
+        whisper_task_queue = None
+        whisper_result_queue = None
 
 def get_hf_repo_id(model_size: str) -> str:
     if isinstance(_MODELS, dict):
@@ -86,6 +93,9 @@ async def process_transcribe_task(task_id, config_payload, loop):
     global whisper_task_queue, whisper_result_queue, whisper_process
     steps = config_payload.get("steps", [])
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
+
+    if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
+        return
 
     if task_id in global_tasks_status:
         if global_tasks_status[task_id].get("current_step") in ["transcribing", "translating"]:
@@ -138,6 +148,10 @@ async def process_transcribe_task(task_id, config_payload, loop):
             # 开始在主进程阻塞读取消息，直到收到 done 或 error
             process_error = None
             while True:
+                if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
+                    force_kill_worker()
+                    raise asyncio.CancelledError("任务已被手动中断")
+
                 try:
                     # 0.5 秒超时轮询，避免完全卡死线程，同时能够响应取消或其他事件
                     msg = await loop.run_in_executor(None, whisper_result_queue.get, True, 0.5)
@@ -179,6 +193,14 @@ async def process_transcribe_task(task_id, config_payload, loop):
         else:
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
             await manager.send_json({"status": "completed", "step": "done", "message": "任务流水线执行完毕！"}, task_id)
+
+    except asyncio.CancelledError:
+        print(f"[识别车间] 任务 {task_id} 被手动中断")
+        err_srt_path = os.path.join(task_dir, "original.srt")
+        if os.path.exists(err_srt_path):
+            try: os.remove(err_srt_path)
+            except: pass
+        await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:
         print(f"[识别车间错误] {e}")

@@ -145,6 +145,18 @@ export const deleteTask = async (taskId) => {
 export const getTaskStatus = (taskId) => fetchGet(`/api/task/${taskId}/status`);
 export const getPipelineStatus = () => fetchGet(`/api/pipeline/status`);
 
+export const cancelTask = async (taskId) => {
+    const res = await fetch(`${API_BASE}/api/task/${taskId}/cancel`, { method: "POST" });
+    if (!res.ok) throw new Error("取消任务失败");
+    return await res.json();
+};
+
+export const cancelAllTasks = async () => {
+    const res = await fetch(`${API_BASE}/api/tasks/cancel_all`, { method: "POST" });
+    if (!res.ok) throw new Error("中断全部任务失败");
+    return await res.json();
+};
+
 export const deleteTaskAsset = async (taskId, assetType) => {
     const res = await fetch(`${API_BASE}/api/task/${taskId}/asset/${assetType}`, { method: "DELETE" });
     if (!res.ok) {

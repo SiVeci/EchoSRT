@@ -109,7 +109,8 @@ async def run_llm_translation(
     output_srt_path: str, 
     llm_config: dict, 
     system_config: dict,
-    progress_callback=None
+    progress_callback=None,
+    cancel_event: asyncio.Event = None
 ):
     """
     执行 LLM 翻译任务的核心调度函数。
@@ -205,6 +206,11 @@ async def run_llm_translation(
         tasks = []
         
         for i in range(0, total_blocks, batch_size):
+            if cancel_event and cancel_event.is_set():
+                if progress_callback:
+                    progress_callback("⚠️ 检测到取消请求，正在终止翻译操作...")
+                raise asyncio.CancelledError()
+
             batch = srt_blocks[i : i + batch_size]
             current_batch_num = (i // batch_size) + 1
             

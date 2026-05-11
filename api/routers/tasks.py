@@ -36,3 +36,13 @@ def delete_task_asset(task_id: str, asset_type: str):
 @router.post("/tasks/reorder")
 def reorder_tasks(task_ids: list[str] = Body(...)):
     return workspace_service.reorder_tasks(task_ids)
+
+@router.post("/task/{task_id}/cancel")
+def cancel_task(task_id: str):
+    dispatcher_service.cancel_task(task_id)
+    return {"message": "任务已发送中断信号"}
+
+@router.post("/tasks/cancel_all")
+def cancel_all_tasks():
+    dispatcher_service.cancel_all_tasks()
+    return {"message": "所有任务已发送中断信号"}

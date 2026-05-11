@@ -1,6 +1,6 @@
-const { ref, onMounted, watch, nextTick } = Vue;
+const { ref, onMounted, watch, nextTick, computed } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig, scanLibrary, getDiscoveries, importFromLibrary } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig, scanLibrary, getDiscoveries, importFromLibrary, cancelTask, cancelAllTasks } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -48,6 +48,9 @@ export default {
                         <div style="display: flex; gap: 10px;">
                             <el-button type="danger" size="small" plain :disabled="taskList.length === 0" @click="clearAllTasks">
                                 <el-icon><Delete /></el-icon> 一键清空
+                            </el-button>
+                            <el-button type="danger" size="small" :disabled="!isAnyTaskRunning" @click="handleCancelAllTasks">
+                                中断全部任务
                             </el-button>
                             <el-button type="success" size="small" plain :disabled="selectedTasks.length === 0" @click="batchRun(false)">
                                 批量提取+识别
@@ -142,7 +145,8 @@ export default {
                     <el-table-column label="焦点操作" width="160" fixed="right">
                         <template #default="scope">
                             <el-button size="small" type="primary" plain @click="loadTask(scope.row)" :disabled="store.taskId === scope.row.task_id">监视</el-button>
-                            <el-button size="small" type="danger" plain @click="removeTask(scope.row)" :disabled="isTaskRunning(scope.row.task_id)">删除</el-button>
+                            <el-button v-if="isTaskRunning(scope.row.task_id)" size="small" type="danger" @click="handleCancelTask(scope.row.task_id)">中断</el-button>
+                            <el-button v-else size="small" type="danger" plain @click="removeTask(scope.row)">删除</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -312,7 +316,7 @@ export default {
                 'pending_extract': 'info', 'extracting': 'warning',
                 'pending_transcribe': 'info', 'transcribing': 'warning',
                 'pending_translate': 'info', 'translating': 'warning',
-                'completed': 'success', 'error': 'danger'
+                'completed': 'success', 'error': 'danger', 'cancelled': 'info'
             };
             return map[step] || 'info';
         };
@@ -321,7 +325,7 @@ export default {
                 'pending_extract': '排队提音中', 'extracting': '▶ 正在提音',
                 'pending_transcribe': '排队识别中', 'transcribing': '▶ 正在识别',
                 'pending_translate': '排队翻译中', 'translating': '▶ 正在翻译',
-                'completed': '✔ 完毕收工', 'error': '✖ 发生错误'
+                'completed': '✔ 完毕收工', 'error': '✖ 发生错误', 'cancelled': '已取消'
             };
             return map[step] || step;
         };
@@ -371,6 +375,10 @@ export default {
             const step = store.pipelineStatus[taskId]?.current_step;
             return ['pending_extract', 'extracting', 'pending_transcribe', 'transcribing', 'pending_translate', 'translating'].includes(step);
         };
+
+        const isAnyTaskRunning = computed(() => {
+            return Object.keys(store.pipelineStatus || {}).length > 0;
+        });
 
         // 多文件批量串行上传队列
         const uploadQueue = [];
@@ -530,6 +538,32 @@ export default {
             ElementPlus.ElMessage.success("任务加载成功！");
         };
 
+        const handleCancelTask = async (taskId) => {
+            try {
+                await cancelTask(taskId);
+                ElementPlus.ElMessage.success("已发送中断信号");
+            } catch (e) {
+                ElementPlus.ElMessage.error(`中断失败: ${e.message}`);
+            }
+        };
+
+        const handleCancelAllTasks = async () => {
+            try {
+                await ElementPlus.ElMessageBox.confirm(
+                    '确认要中断所有正在执行的任务吗？这将强制停止底层进程。',
+                    '高危操作',
+                    { confirmButtonText: '确定中断', cancelButtonText: '取消', type: 'error' }
+                );
+                
+                await cancelAllTasks();
+                ElementPlus.ElMessage.success("已发送中断信号，等待底层进程退出...");
+            } catch (e) {
+                if (e !== 'cancel') {
+                    ElementPlus.ElMessage.error(`操作失败: ${e.message}`);
+                }
+            }
+        };
+
         const removeTask = async (task) => {
             try {
                 await ElementPlus.ElMessageBox.confirm(`确定要彻底删除任务 "${task.base_name}" 及其所有产生的文件吗？此操作不可逆。`, '警告', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' });
@@ -628,6 +662,9 @@ export default {
             isTaskRunning,
             handleUpload,
             loadTask,
+            handleCancelTask,
+            handleCancelAllTasks,
+            isAnyTaskRunning,
             removeTask,
             clearAllTasks,
             batchRun,

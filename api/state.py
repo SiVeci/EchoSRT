@@ -15,3 +15,6 @@ global_downloading_models: dict[str, dict] = {}
 # 全局媒体库发现列表
 # key: fingerprint, value: {"path": "...", "size": 0, "mtime": 0, "status": "new/imported"}
 global_library_discoveries: dict[str, dict] = {}
+
+# 全局取消事件字典 (用于手动中断任务)
+global_cancel_events: dict[str, asyncio.Event] = {}

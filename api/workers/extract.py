@@ -2,7 +2,7 @@ import os
 import asyncio
 import json
 
-from ..state import q_extract, q_transcribe, q_translate, global_tasks_status
+from ..state import q_extract, q_transcribe, q_translate, global_tasks_status, global_cancel_events
 from ..ws_manager import manager
 
 from core.audio_extractor import extract_audio
@@ -13,6 +13,9 @@ async def process_extract_task(task_id, config_payload, loop):
     steps = config_payload.get("steps", [])
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     
+    if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
+        return
+
     if task_id in global_tasks_status:
         if global_tasks_status[task_id].get("current_step") in ["extracting", "transcribing", "translating"]:
             print(f"[提取车间] 任务 {task_id} 已在处理中，忽略并发抢占。")
@@ -54,7 +57,10 @@ async def process_extract_task(task_id, config_payload, loop):
             asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
             
         await manager.send_json({"status": "processing", "step": "extract_audio", "message": "正在提取音频..."}, task_id)
-        await loop.run_in_executor(None, extract_audio, video_path, audio_path, audio_progress_callback, ffmpeg_settings)
+        # 透传 cancel_event
+        cancel_event = global_cancel_events.get(task_id)
+        
+        await loop.run_in_executor(None, extract_audio, video_path, audio_path, audio_progress_callback, ffmpeg_settings, cancel_event)
 
         if "transcribe" in steps:
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_transcribe"
@@ -65,6 +71,14 @@ async def process_extract_task(task_id, config_payload, loop):
         else:
             if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
             await manager.send_json({"status": "completed", "step": "done", "message": "任务流水线执行完毕！"}, task_id)
+
+    except asyncio.CancelledError:
+        print(f"[提取车间] 任务 {task_id} 被手动中断")
+        err_audio_path = os.path.join(task_dir, "audio.wav")
+        if os.path.exists(err_audio_path):
+            try: os.remove(err_audio_path)
+            except: pass
+        await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:
         print(f"[提取车间错误] {e}")

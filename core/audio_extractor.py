@@ -6,8 +6,9 @@ import re
 import queue
 import threading
 import time
+import asyncio
 
-def extract_audio(video_path: str, output_audio_path: str, progress_callback=None, ffmpeg_settings: dict = None) -> str:
+def extract_audio(video_path: str, output_audio_path: str, progress_callback=None, ffmpeg_settings: dict = None, cancel_event: asyncio.Event = None) -> str:
     """使用 FFmpeg 从视频中提取 16kHz 单声道音频"""
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"视频文件不存在: {video_path}")
@@ -97,6 +98,9 @@ def extract_audio(video_path: str, output_audio_path: str, progress_callback=Non
     
     try:
         while True:
+            if cancel_event and cancel_event.is_set():
+                process.kill()
+                raise asyncio.CancelledError("任务已被手动中断")
             try:
                 line = out_queue.get(timeout=1.0)
                 if line is None:
