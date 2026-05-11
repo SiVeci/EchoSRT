@@ -20,7 +20,7 @@ def parse_srt(content: str) -> list:
     blocks = content.split('\n\n')
     return [b.strip() for b in blocks if b.strip()]
 
-async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, previous_context="", progress_callback=None, temperature=1.0, max_tokens=8192):
+async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, previous_context="", progress_callback=None, temperature=1.0, max_tokens=8192, cancel_event=None):
     """
     发送单个分块进行翻译 (异步并发)
     """
@@ -32,16 +32,32 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
             user_content = f"【以下是上一段原文结尾，仅供上下文衔接参考，🚫禁止翻译该部分🚫】：\n{previous_context}\n\n====================\n\n【👇请严格按照原格式，正式翻译以下字幕片段👇】：\n{text_to_translate}"
 
         try:
-            completion = await client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=False
+            api_task = asyncio.create_task(
+                client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=False
+                )
             )
+
+            if cancel_event:
+                cancel_task = asyncio.create_task(cancel_event.wait())
+                done, pending = await asyncio.wait(
+                    [api_task, cancel_task], 
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                for p in pending:
+                    p.cancel()
+                if cancel_task in done:
+                    raise asyncio.CancelledError()
+                completion = api_task.result()
+            else:
+                completion = await api_task
 
             if not completion.choices:
                 raise Exception(f"大模型未返回任何 choices。响应: {completion}")
@@ -232,14 +248,15 @@ async def run_llm_translation(
                     previous_context=prev_context,
                     progress_callback=progress_callback,
                     temperature=float(llm_config.get("temperature", 1.0)),
-                    max_tokens=int(llm_config.get("max_tokens", 8192))
+                    max_tokens=int(llm_config.get("max_tokens", 8192)),
+                    cancel_event=cancel_event
                 )
             )
             
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         for res in results:
-            if isinstance(res, Exception):
+            if isinstance(res, BaseException):
                 raise res
         
         # 按 batch_index 排序确保写入顺序正确

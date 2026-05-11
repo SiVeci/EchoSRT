@@ -149,6 +149,7 @@ async def process_transcribe_task(task_id, config_payload, loop):
             process_error = None
             while True:
                 if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
+                    monitor_task.cancel()
                     force_kill_worker()
                     raise asyncio.CancelledError("任务已被手动中断")
 

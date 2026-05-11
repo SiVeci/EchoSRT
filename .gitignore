@@ -54,3 +54,4 @@ TODO.md
 requirements_test.txt
 tox.ini
 tests/
+pytest.ini

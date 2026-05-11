@@ -377,7 +377,10 @@ export default {
         };
 
         const isAnyTaskRunning = computed(() => {
-            return Object.keys(store.pipelineStatus || {}).length > 0;
+            const statusObj = store.pipelineStatus || {};
+            return Object.values(statusObj).some(status => 
+                ['pending_extract', 'extracting', 'pending_transcribe', 'transcribing', 'pending_translate', 'translating'].includes(status?.current_step)
+            );
         });
 
         // 多文件批量串行上传队列
