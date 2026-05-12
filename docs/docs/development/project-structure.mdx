@@ -12,15 +12,13 @@ sidebar_position: 1
 
 ```
 EchoSRT/
-├── app.py                          # FastAPI 应用入口（API 服务模式）
-├── main.py                         # 本地命令行入口（单机模式）
+├── app.py                          # FastAPI 应用入口（API 服务模式 + 后台 Worker 协程）
 ├── docker-compose.yml              # Docker Compose 编排文件
 ├── Dockerfile                      # CPU 版本镜像构建文件
 ├── Dockerfile.gpu                  # GPU 版本镜像构建文件
 ├── docker-entrypoint.sh            # 容器启动脚本（PUID/PGID 处理）
 ├── requirements.txt                # Python 依赖清单
 ├── README.md                       # 项目说明
-├── WIKI_PLAN.md                    # Wiki 构建计划书
 │
 ├── core/                           # 🔧 核心处理引擎（无状态纯函数）
 │   ├── __init__.py
@@ -38,12 +36,14 @@ EchoSRT/
 │   │   ├── __init__.py
 │   │   ├── config.py               # 配置读写 API
 │   │   ├── tasks.py                # 任务提交与查询 API
+│   │   ├── library.py              # 媒体库扫描与导入 API
 │   │   └── ws.py                   # WebSocket 端点
 │   ├── services/                   # 业务逻辑层
 │   │   ├── __init__.py
 │   │   ├── config_service.py       # 配置读写 + 代理设置
 │   │   ├── dispatcher_service.py   # 任务派发与参数验证
-│   │   └── workspace_service.py    # 工作区文件管理
+│   │   ├── workspace_service.py    # 工作区文件管理
+│   │   └── library_service.py      # 媒体库扫描引擎
 │   └── workers/                    # 后台任务车间（异步循环）
 │       ├── __init__.py
 │       ├── extract.py              # 音频提取 Worker
@@ -81,9 +81,12 @@ EchoSRT/
 │
 └── workspace/                      # 📁 任务产物（运行时生成，.gitignore）
     └── {task_id}/                  # 每个任务独立子目录
+        ├── meta.json               # 任务元信息
+        ├── state.json              # 流水线状态持久化
+        ├── video.*                 # 上传的原始视频
         ├── audio.wav               # 提取的音频
-        ├── output.srt              # 原始字幕
-        └── output_translated.srt   # 翻译后字幕
+        ├── original.srt            # 原始字幕
+        └── translated.srt          # 翻译后字幕
 ```
 
 ---
@@ -98,14 +101,14 @@ EchoSRT/
 
 ### `core/audio_extractor.py`
 
-- 封装 `ffmpeg-python` 调用
-- 接受 `ffmpeg_settings` 自定义参数（采样率、编码器等）
-- 输出临时 WAV 文件供下游处理
+- 通过 `subprocess` 调用 FFmpeg 命令行
+- 接受 `ffmpeg_settings` 自定义参数（音频流选择、时间范围等）
+- 输出 16kHz/mono PCM WAV 文件供下游处理
 
 ### `core/whisper_engine.py`
 
 - 封装 `faster-whisper` 库
-- 支持模型按需下载（`~/.cache/huggingface` 或 `models/`）
+- 支持模型按需下载到 `download_root` 配置的目录（默认 `models/`）
 - 集成 VAD（语音活动检测）裁剪静音段
 - 自定义回调 `progress_callback` 推送实时进度
 - 返回 `List[Segment]` 结构化数据
@@ -119,9 +122,9 @@ EchoSRT/
 ### `core/translate.py`
 
 - 封装 LLM API 调用（OpenAI / DeepSeek 兼容格式）
-- 支持 `max_concurrent` 并发批次翻译
+- 支持 `concurrent_workers` 并发批次翻译（`asyncio.Semaphore`）
 - 排版熔断：保留原始 SRT 格式不破坏字幕索引
-- 异步架构：`asyncio` + `aiohttp`
+- 异步架构：`AsyncOpenAI` + `httpx`
 
 ---
 
