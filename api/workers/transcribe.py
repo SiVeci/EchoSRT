@@ -3,7 +3,7 @@ import asyncio
 from multiprocessing import Process, Queue
 from queue import Empty
 
-from ..state import q_transcribe, q_translate, global_tasks_status, global_cancel_events
+from ..state import q_transcribe, q_translate, global_tasks_status, global_cancel_events, update_task_status, get_task_status
 from ..ws_manager import manager
 
 from core.whisper_engine import worker_process_loop, transcribe_audio, unload_model
@@ -97,11 +97,12 @@ async def process_transcribe_task(task_id, config_payload, loop):
     if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
         return
 
-    if task_id in global_tasks_status:
-        if global_tasks_status[task_id].get("current_step") in ["transcribing", "translating"]:
+    task_status = await get_task_status(task_id)
+    if task_status:
+        if task_status.get("current_step") in ["transcribing", "translating"]:
             print(f"[识别车间] 任务 {task_id} 已在后续处理中，忽略并发抢占。")
             return
-        global_tasks_status[task_id]["current_step"] = "transcribing"
+        await update_task_status(task_id, {"current_step": "transcribing"})
 
     try:
         old_translated_path = os.path.join(task_dir, "translated.srt")
@@ -189,10 +190,10 @@ async def process_transcribe_task(task_id, config_payload, loop):
 
         # 下游处理
         if "translate" in steps:
-            if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "pending_translate"
+            await update_task_status(task_id, {"current_step": "pending_translate"})
             await q_translate.put((task_id, config_payload))
         else:
-            if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
+            await update_task_status(task_id, {"current_step": "completed"})
             await manager.send_json({"status": "completed", "step": "done", "message": "任务流水线执行完毕！"}, task_id)
 
     except asyncio.CancelledError:
@@ -201,6 +202,8 @@ async def process_transcribe_task(task_id, config_payload, loop):
         if os.path.exists(err_srt_path):
             try: os.remove(err_srt_path)
             except: pass
+        if await get_task_status(task_id): 
+            await update_task_status(task_id, {"current_step": "error", "interrupted_step": "transcribing"})
         await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:
@@ -209,7 +212,8 @@ async def process_transcribe_task(task_id, config_payload, loop):
         if os.path.exists(err_srt_path):
             try: os.remove(err_srt_path)
             except: pass
-        if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
+        if await get_task_status(task_id):
+            await update_task_status(task_id, {"current_step": "error", "interrupted_step": "transcribing"})
         await manager.send_json({"status": "error", "message": f"语音识别失败: {str(e)}"}, task_id)
 
 async def worker_transcribe_loop():

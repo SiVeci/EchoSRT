@@ -1,7 +1,7 @@
 import os
 import asyncio
 
-from ..state import q_translate, global_tasks_status, global_cancel_events
+from ..state import q_translate, global_tasks_status, global_cancel_events, update_task_status, get_task_status
 from ..ws_manager import manager
 import json
 
@@ -15,11 +15,12 @@ async def process_translate_task(task_id, config_payload, loop):
     if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
         return
 
-    if task_id in global_tasks_status:
-        if global_tasks_status[task_id].get("current_step") == "translating":
+    task_status = await get_task_status(task_id)
+    if task_status:
+        if task_status.get("current_step") == "translating":
             print(f"[翻译车间] 任务 {task_id} 已在处理中，忽略并发抢占。")
             return
-        global_tasks_status[task_id]["current_step"] = "translating"
+        await update_task_status(task_id, {"current_step": "translating"})
 
     try:
         input_srt = os.path.join(task_dir, "original.srt")
@@ -49,7 +50,7 @@ async def process_translate_task(task_id, config_payload, loop):
                 with open(meta_path, "w", encoding="utf-8") as f: json.dump(meta_data, f, ensure_ascii=False)
             except Exception: pass
 
-        if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "completed"
+        await update_task_status(task_id, {"current_step": "completed"})
         await manager.send_json({"status": "completed", "step": "done", "message": "全量任务流水线完美收官！"}, task_id)
 
     except asyncio.CancelledError:
@@ -58,6 +59,8 @@ async def process_translate_task(task_id, config_payload, loop):
         if os.path.exists(err_translated_path):
             try: os.remove(err_translated_path)
             except: pass
+        if await get_task_status(task_id):
+            await update_task_status(task_id, {"current_step": "error", "interrupted_step": "translating"})
         await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:
@@ -67,7 +70,8 @@ async def process_translate_task(task_id, config_payload, loop):
         if os.path.exists(err_translated_path):
             try: os.remove(err_translated_path)
             except: pass
-        if task_id in global_tasks_status: global_tasks_status[task_id]["current_step"] = "error"
+        if await get_task_status(task_id):
+            await update_task_status(task_id, {"current_step": "error", "interrupted_step": "translating"})
         await manager.send_json({"status": "error", "message": f"智能翻译失败: {str(e)}"}, task_id)
 
 async def worker_translate_loop():

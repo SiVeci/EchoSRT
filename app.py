@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import config, tasks, ws, library
 from api.services import config_service
+from api.state import global_tasks_status, update_task_status
 from api.workers import worker_extract_loop, worker_transcribe_loop, worker_translate_loop
 
 _worker_tasks = set()
@@ -30,6 +31,31 @@ async def lifespan(app: FastAPI):
                 config_service.set_global_proxy(json.load(f).get("system_settings", {}))
     except Exception as e:
         print(f"[警告] 启动时设置全局代理失败: {e}")
+
+    # --- 任务状态恢复逻辑 ---
+    WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
+    if os.path.exists(WORKSPACE_DIR):
+        print("[*] 正在扫描工作区以恢复任务状态...")
+        for task_id in os.listdir(WORKSPACE_DIR):
+            state_path = os.path.join(WORKSPACE_DIR, task_id, "state.json")
+            if os.path.exists(state_path):
+                try:
+                    with open(state_path, "r", encoding="utf-8") as f:
+                        state = json.load(f)
+                    
+                    # 识别执行中的状态并修正为中断
+                    running_steps = ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]
+                    if state.get("current_step") in running_steps:
+                        state["interrupted_step"] = state["current_step"]
+                        state["current_step"] = "interrupted"
+                        # 持久化修正后的状态
+                        with open(state_path, "w", encoding="utf-8") as f:
+                            json.dump(state, f, ensure_ascii=False, indent=2)
+                    
+                    global_tasks_status[task_id] = state
+                except Exception as e:
+                    print(f"[错误] 恢复任务 {task_id} 状态失败: {e}")
+        print(f"[*] 状态恢复完毕，共加载 {len(global_tasks_status)} 个任务。")
         
     # 启动后台常驻的 Worker 任务车间
     t1 = asyncio.create_task(worker_extract_loop())

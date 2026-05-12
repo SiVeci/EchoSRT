@@ -2,7 +2,7 @@ const { ref } = Vue;
 import WhisperLocal from './WhisperLocal.js';
 import WhisperApi from './WhisperApi.js';
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask, updateConfig } from '../api.js';
+import { executeTask, retryTask, updateConfig } from '../api.js';
 
 export default {
     name: 'TabWhisper',
@@ -47,7 +47,12 @@ export default {
                     :disabled="!store.assets.hasAudio"
                 >
                 <el-icon style="margin-right: 5px;"><Microphone /></el-icon>
-                {{ store.config.transcribe_settings.engine === 'api' ? ' 启动云端 API 识别' : ' 启动本地模型识别' }}
+                <span v-if="(store.pipelineStatus[store.taskId]?.current_step === 'interrupted' || store.pipelineStatus[store.taskId]?.current_step === 'error') && (store.pipelineStatus[store.taskId]?.interrupted_step === 'transcribing' || store.pipelineStatus[store.taskId]?.interrupted_step === 'pending_transcribe')">
+                    继续执行 (断点重试)
+                </span>
+                <span v-else>
+                    {{ store.config.transcribe_settings.engine === 'api' ? ' 启动云端 API 识别' : ' 启动本地模型识别' }}
+                </span>
                 </el-button>
                 
                 <span v-if="!store.assets.hasAudio" class="status-text-error">
@@ -85,8 +90,13 @@ export default {
             store.isProcessing = true;
             store.activeStep = 3; // 进度条跳到原声识别
             store.taskState.downloadedMB = null;
+
+            const statusObj = store.pipelineStatus[store.taskId];
+            const currentStatus = statusObj?.current_step;
+            const interruptedStep = statusObj?.interrupted_step;
+            const isRetry = (currentStatus === 'interrupted' || currentStatus === 'error') && (interruptedStep === 'transcribing' || interruptedStep === 'pending_transcribe');
             const engineName = store.config.transcribe_settings.engine === 'api' ? "云端 API" : "本地 Whisper";
-            addLog(`▶️ 启动 ${engineName} 识别引擎...`, "info");
+            addLog(isRetry ? "🔄 尝试断点重试任务..." : `▶️ 启动 ${engineName} 识别引擎...`, "info");
 
             connectTaskMonitor(
                 store.taskId,
@@ -103,7 +113,11 @@ export default {
             try { await updateConfig(store.config); } catch (e) {}
 
             try {
-                await executeTask(store.taskId, ["transcribe"], store.config);
+                if (isRetry) {
+                    await retryTask(store.taskId);
+                } else {
+                    await executeTask(store.taskId, ["transcribe"], store.config);
+                }
             } catch (e) {
                 addLog(`请求启动任务失败: ${e.message}`, "error");
                 store.isProcessing = false;

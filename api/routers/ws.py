@@ -19,10 +19,9 @@ async def get_task_status(task_id: str):
 
 @router.get("/api/pipeline/status")
 async def get_pipeline_status():
-    # 增量优化：只返回当前正在运行或待命的任务，过滤掉已完成和报错的陈旧状态
-    # 这能极大减小前端轮询的 Payload 体积，防止内存泄漏和网络阻塞
+    # 增量优化：只返回当前正在运行、异常中断或报错的任务，过滤掉已完成的陈旧状态
     active_tasks = {
         tid: status for tid, status in global_tasks_status.items() 
-        if status.get("current_step") not in ["completed", "error"]
+        if status.get("current_step") not in ["completed"]
     }
     return active_tasks

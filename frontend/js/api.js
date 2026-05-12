@@ -134,6 +134,18 @@ export const executeTask = async (taskId, steps, config) => {
     return await res.json();
 };
 
+export const retryTask = async (taskId) => {
+    const res = await fetch(`${API_BASE}/api/task/${taskId}/retry`, {
+        method: "POST"
+    });
+    if (!res.ok) {
+        let errMsg = "重试请求失败";
+        try { errMsg = (await res.json()).detail || errMsg; } catch(e) {}
+        throw new Error(errMsg);
+    }
+    return await res.json();
+};
+
 export const getTasks = () => fetchGet('/api/tasks');
 export const getTaskAssets = (taskId) => fetchGet(`/api/task/${taskId}/assets`);
 export const deleteTask = async (taskId) => {

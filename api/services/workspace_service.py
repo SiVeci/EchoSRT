@@ -4,7 +4,7 @@ import uuid
 import asyncio
 import shutil
 from fastapi import UploadFile, HTTPException
-from ..state import global_tasks_status, global_cancel_events
+from ..state import global_tasks_status, global_cancel_events, get_task_status, delete_task_status, update_task_status
 from core.audio_extractor import extract_audio
 from .config_service import get_config
 from ..ws_manager import manager
@@ -203,10 +203,11 @@ def get_all_tasks():
     # 排序规则优先按 sort_weight (降序)，再按 created_at (降序)
     return sorted(tasks, key=lambda x: (x["sort_weight"], x["created_at"]), reverse=True)
 
-def delete_task_workspace(task_id: str):
+async def delete_task_workspace(task_id: str):
     task_id = sanitize_task_id(task_id)
-    if task_id in global_tasks_status:
-        step = global_tasks_status[task_id].get("current_step")
+    task_status = await get_task_status(task_id)
+    if task_status:
+        step = task_status.get("current_step")
         if step in ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]:
             raise HTTPException(status_code=400, detail="该任务正在执行中，为防止文件损坏，无法删除！")
             
@@ -216,19 +217,20 @@ def delete_task_workspace(task_id: str):
             shutil.rmtree(task_dir)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"文件被占用或无法删除: {str(e)}")
-    global_tasks_status.pop(task_id, None)
+    delete_task_status(task_id)
     global_cancel_events.pop(task_id, None)
     manager.task_states.pop(task_id, None)
     manager.disconnect(task_id)
     return {"message": "任务删除成功"}
 
-def delete_single_asset(task_id: str, asset_type: str):
+async def delete_single_asset(task_id: str, asset_type: str):
     task_id = sanitize_task_id(task_id)
     task_dir = os.path.join(WORKSPACE_DIR, task_id)
     if not os.path.exists(task_dir): raise HTTPException(status_code=404, detail="任务目录不存在")
     
-    if task_id in global_tasks_status:
-        step = global_tasks_status[task_id].get("current_step")
+    task_status = await get_task_status(task_id)
+    if task_status:
+        step = task_status.get("current_step")
         if step in ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]:
             raise HTTPException(status_code=400, detail="该任务正在执行中，为防止底层引擎崩溃，暂无法删除资产！")
             

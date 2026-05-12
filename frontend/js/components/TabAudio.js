@@ -1,6 +1,6 @@
 const { ref } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask, uploadAsset, updateConfig } from '../api.js';
+import { executeTask, retryTask, uploadAsset, updateConfig } from '../api.js';
 
 export default {
     name: 'TabAudio',
@@ -88,7 +88,8 @@ export default {
                     :loading="store.isProcessing"
                     :disabled="!store.assets.hasVideo"
                 >
-                    <el-icon style="margin-right: 5px;"><VideoPlay /></el-icon> 仅执行音频提取
+                    <el-icon style="margin-right: 5px;"><VideoPlay /></el-icon> 
+                    {{ ((store.pipelineStatus[store.taskId]?.current_step === 'interrupted' || store.pipelineStatus[store.taskId]?.current_step === 'error') && (!store.pipelineStatus[store.taskId]?.interrupted_step || store.pipelineStatus[store.taskId]?.interrupted_step === 'extracting' || store.pipelineStatus[store.taskId]?.interrupted_step === 'pending_extract')) ? '继续执行 (断点重试)' : '仅执行音频提取' }}
                 </el-button>
                 
                 <span v-if="!store.assets.hasVideo" class="status-text-error">
@@ -137,7 +138,12 @@ export default {
             store.isProcessing = true;
             store.activeStep = 2; // 更新进度条状态
             store.taskState.extractedTime = "";
-            addLog("▶️ 启动 FFmpeg 音频提取...", "info");
+
+            const statusObj = store.pipelineStatus[store.taskId];
+            const currentStatus = statusObj?.current_step;
+            const interruptedStep = statusObj?.interrupted_step;
+            const isRetry = (currentStatus === 'interrupted' || currentStatus === 'error') && (!interruptedStep || interruptedStep === 'extracting' || interruptedStep === 'pending_extract');
+            addLog(isRetry ? "🔄 尝试断点重试任务..." : "▶️ 启动 FFmpeg 音频提取...", "info");
 
             connectTaskMonitor(
                 store.taskId,
@@ -154,7 +160,11 @@ export default {
             try { await updateConfig(store.config); } catch (e) {}
 
             try {
-                await executeTask(store.taskId, ["extract"], store.config);
+                if (isRetry) {
+                    await retryTask(store.taskId);
+                } else {
+                    await executeTask(store.taskId, ["extract"], store.config);
+                }
             } catch (e) {
                 addLog(`请求启动任务失败: ${e.message}`, "error");
                 store.isProcessing = false;

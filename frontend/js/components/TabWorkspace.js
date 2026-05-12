@@ -1,6 +1,6 @@
 const { ref, onMounted, watch, nextTick, computed } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { uploadAsset, getTasks, deleteTask, executeTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig, scanLibrary, getDiscoveries, importFromLibrary, cancelTask, cancelAllTasks } from '../api.js';
+import { uploadAsset, getTasks, deleteTask, executeTask, retryTask, testProxy, getTaskAssets, deleteTaskAsset, reorderTasks, updateConfig, scanLibrary, getDiscoveries, importFromLibrary, cancelTask, cancelAllTasks } from '../api.js';
 
 export default {
     name: 'TabWorkspace',
@@ -316,7 +316,8 @@ export default {
                 'pending_extract': 'info', 'extracting': 'warning',
                 'pending_transcribe': 'info', 'transcribing': 'warning',
                 'pending_translate': 'info', 'translating': 'warning',
-                'completed': 'success', 'error': 'danger', 'cancelled': 'info'
+                'completed': 'success', 'error': 'danger', 'cancelled': 'info',
+                'interrupted': 'warning'
             };
             return map[step] || 'info';
         };
@@ -325,7 +326,8 @@ export default {
                 'pending_extract': '排队提音中', 'extracting': '▶ 正在提音',
                 'pending_transcribe': '排队识别中', 'transcribing': '▶ 正在识别',
                 'pending_translate': '排队翻译中', 'translating': '▶ 正在翻译',
-                'completed': '✔ 完毕收工', 'error': '✖ 发生错误', 'cancelled': '已取消'
+                'completed': '✔ 完毕收工', 'error': '✖ 发生错误', 'cancelled': '已取消',
+                'interrupted': '⚠️ 异常中断'
             };
             return map[step] || step;
         };
@@ -488,6 +490,18 @@ export default {
             try { await updateConfig(store.config); } catch (e) {}
 
             for (const task of selectedTasks.value) {
+                // 嗅探任务状态，如果是异常中断则直接走重试逻辑
+                const currentStatus = store.pipelineStatus[task.task_id]?.current_step;
+                if (currentStatus === 'interrupted' || currentStatus === 'error') {
+                    try {
+                        await retryTask(task.task_id);
+                        addLog(`🔄 任务 ${task.base_name} 正在尝试断点续传重试...`, "success");
+                    } catch (e) {
+                        addLog(`❌ 任务 ${task.base_name} 重试失败: ${e.message}`, "error");
+                    }
+                    continue; // 跳过常规下发逻辑
+                }
+
                 const steps = [];
                 if (!task.has_audio && task.has_video) steps.push("extract");
                 

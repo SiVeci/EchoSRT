@@ -1,11 +1,13 @@
 import asyncio
+import os
+import json
 
 # 任务队列
 q_extract = asyncio.Queue()
 q_transcribe = asyncio.Queue()
 q_translate = asyncio.Queue()
 
-# 全局任务状态字典 (用于前端轮询看板)
+# 全局任务状态字典 (内存缓存)
 # key: task_id, value: {"steps": [...], "current_step": "...", "config": {...}}
 global_tasks_status: dict[str, dict] = {}
 
@@ -18,3 +20,48 @@ global_library_discoveries: dict[str, dict] = {}
 
 # 全局取消事件字典 (用于手动中断任务)
 global_cancel_events: dict[str, asyncio.Event] = {}
+
+WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
+
+async def get_task_status(task_id: str) -> dict:
+    """获取任务状态（优先从内存读取，否则从 state.json 读取）"""
+    if task_id in global_tasks_status:
+        return global_tasks_status[task_id]
+    
+    state_path = os.path.join(WORKSPACE_DIR, task_id, "state.json")
+    if os.path.exists(state_path):
+        try:
+            def _read():
+                with open(state_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            data = await asyncio.to_thread(_read)
+            global_tasks_status[task_id] = data
+            return data
+        except Exception:
+            pass
+    return {}
+
+async def update_task_status(task_id: str, status_data: dict):
+    """更新任务状态并实时持久化到磁盘"""
+    if task_id not in global_tasks_status:
+        await get_task_status(task_id)
+        
+    if task_id in global_tasks_status:
+        global_tasks_status[task_id].update(status_data)
+    else:
+        global_tasks_status[task_id] = status_data
+        
+    # 持久化到磁盘
+    state_dir = os.path.join(WORKSPACE_DIR, task_id)
+    if not os.path.exists(state_dir):
+        os.makedirs(state_dir, exist_ok=True)
+    
+    state_path = os.path.join(state_dir, "state.json")
+    def _write():
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(global_tasks_status[task_id], f, ensure_ascii=False, indent=2)
+    await asyncio.to_thread(_write)
+
+def delete_task_status(task_id: str):
+    """清理内存中的任务状态缓存"""
+    global_tasks_status.pop(task_id, None)

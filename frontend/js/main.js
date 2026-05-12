@@ -10,7 +10,7 @@ import GlobalSettings from './components/GlobalSettings.js';
 
 // 引入全局状态与网络请求
 import { store, addLog, connectTaskMonitor, connectSystemDownloadMonitor } from './store.js';
-import { getConfig, getLanguages, getModels, executeTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo, getDownloadStatus, updateConfig } from './api.js';
+import { getConfig, getLanguages, getModels, executeTask, retryTask, getTaskStatus, getTasks, getPipelineStatus, getSystemInfo, getDownloadStatus, updateConfig } from './api.js';
 
 const app = createApp({
     components: {
@@ -99,6 +99,10 @@ const app = createApp({
                         if (state === 'pending_extract' || state === 'extracting') store.activeStep = 2;
                         else if (state === 'pending_transcribe' || state === 'transcribing') store.activeStep = 3;
                         else if (state === 'pending_translate' || state === 'translating') store.activeStep = 4;
+                        else if (state === 'interrupted' || state === 'error') {
+                            // 保持当前进度条位置，但不显示加载动画
+                            store.isProcessing = false;
+                        }
                         else if (state === 'completed') {
                             if (store.assets.hasTranslatedSrt) store.activeStep = 5;
                             else if (store.assets.hasOriginalSrt) store.activeStep = 4;
@@ -107,7 +111,7 @@ const app = createApp({
                             else store.activeStep = 1;
                         }
                         
-                        store.isProcessing = (state !== 'completed' && state !== 'error');
+                        store.isProcessing = (state !== 'completed' && state !== 'error' && state !== 'interrupted' && state !== 'cancelled');
                     }
                 } catch (e) {}
                 
@@ -154,6 +158,24 @@ const app = createApp({
             if (!store.taskId) {
                 ElementPlus.ElMessage.warning("请先在【任务工作区】上传视频或指定一个任务！");
                 return;
+            }
+            
+            // 嗅探任务状态，如果是异常中断则直接走重试逻辑
+            const currentStatus = store.pipelineStatus[store.taskId]?.current_step;
+            const isRetry = currentStatus === 'interrupted' || currentStatus === 'error';
+
+            if (isRetry) {
+                store.isProcessing = true;
+                addLog(`🔄 发现任务处于异常状态，正在尝试断点续传重试...`, "warning");
+                connectTaskMonitor(store.taskId, null, null);
+                try {
+                    await retryTask(store.taskId);
+                    return;
+                } catch (e) {
+                    addLog(`❌ 重试失败: ${e.message}`, "error");
+                    store.isProcessing = false;
+                    return;
+                }
             }
             
             // 🧠 智能组装需要执行的流水线步骤

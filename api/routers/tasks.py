@@ -12,6 +12,10 @@ async def upload_asset(asset_type: str, file: UploadFile = File(...), task_id: s
 async def execute_task(payload: dict = Body(...)):
     return await dispatcher_service.dispatch_task(payload)
 
+@router.post("/task/{task_id}/retry")
+async def retry_task(task_id: str):
+    return await dispatcher_service.retry_task(task_id)
+
 @router.get("/download/{task_id}")
 async def download_srt(task_id: str, type: str = "original"):
     target_file, out_name = await workspace_service.get_download_file_path(task_id, type)
@@ -26,23 +30,23 @@ def list_tasks():
     return workspace_service.get_all_tasks()
 
 @router.delete("/task/{task_id}")
-def delete_task(task_id: str):
-    return workspace_service.delete_task_workspace(task_id)
+async def delete_task(task_id: str):
+    return await workspace_service.delete_task_workspace(task_id)
 
 @router.delete("/task/{task_id}/asset/{asset_type}")
-def delete_task_asset(task_id: str, asset_type: str):
-    return workspace_service.delete_single_asset(task_id, asset_type)
+async def delete_task_asset(task_id: str, asset_type: str):
+    return await workspace_service.delete_single_asset(task_id, asset_type)
 
 @router.post("/tasks/reorder")
 def reorder_tasks(task_ids: list[str] = Body(...)):
     return workspace_service.reorder_tasks(task_ids)
 
 @router.post("/task/{task_id}/cancel")
-def cancel_task(task_id: str):
-    dispatcher_service.cancel_task(task_id)
+async def cancel_task(task_id: str):
+    await dispatcher_service.cancel_task(task_id)
     return {"message": "任务已发送中断信号"}
 
 @router.post("/tasks/cancel_all")
-def cancel_all_tasks():
-    dispatcher_service.cancel_all_tasks()
+async def cancel_all_tasks():
+    await dispatcher_service.cancel_all_tasks()
     return {"message": "所有任务已发送中断信号"}

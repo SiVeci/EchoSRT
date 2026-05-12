@@ -1,6 +1,6 @@
 const { ref, computed } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask, uploadAsset, getLlmModels, updateConfig } from '../api.js';
+import { executeTask, retryTask, uploadAsset, getLlmModels, updateConfig } from '../api.js';
 
 export default {
     name: 'TabLLM',
@@ -220,7 +220,8 @@ export default {
                     :loading="store.isProcessing"
                     :disabled="!store.assets.hasOriginalSrt"
                 >
-                    <el-icon style="margin-right: 5px;"><ChatDotSquare /></el-icon> 开始执行智能翻译
+                    <el-icon style="margin-right: 5px;"><ChatDotSquare /></el-icon> 
+                    {{ ((store.pipelineStatus[store.taskId]?.current_step === 'interrupted' || store.pipelineStatus[store.taskId]?.current_step === 'error') && (store.pipelineStatus[store.taskId]?.interrupted_step === 'translating' || store.pipelineStatus[store.taskId]?.interrupted_step === 'pending_translate')) ? '继续执行 (断点重试)' : '开始执行智能翻译' }}
                 </el-button>
                 
                 <span v-if="!store.assets.hasOriginalSrt" class="status-text-error">
@@ -334,7 +335,12 @@ export default {
 
             store.isProcessing = true;
             store.activeStep = 4;
-            addLog("▶️ 启动大模型智能翻译流...", "info");
+            
+            const statusObj = store.pipelineStatus[store.taskId];
+            const currentStatus = statusObj?.current_step;
+            const interruptedStep = statusObj?.interrupted_step;
+            const isRetry = (currentStatus === 'interrupted' || currentStatus === 'error') && (interruptedStep === 'translating' || interruptedStep === 'pending_translate');
+            addLog(isRetry ? "🔄 尝试断点重试任务..." : "▶️ 启动大模型智能翻译流...", "info");
 
             connectTaskMonitor(
                 store.taskId,
@@ -350,9 +356,13 @@ export default {
             try { await updateConfig(store.config); } catch (e) {}
 
             try {
-                await executeTask(store.taskId, ["translate"], store.config);
+                if (isRetry) {
+                    await retryTask(store.taskId);
+                } else {
+                    await executeTask(store.taskId, ["translate"], store.config);
+                }
             } catch (e) {
-                addLog(`请求启动翻译失败: \${e.message}`, "error");
+                addLog(`请求启动翻译失败: ${e.message}`, "error");
                 store.isProcessing = false;
             }
         };
