@@ -4,7 +4,7 @@ import { WS_BASE, getModels } from './api.js';
 /* 全局状态管理 (轻量级 Pinia 替代) */
 export const store = reactive({
     // --- 全局应用控制 ---
-    appVersion: "v1.2.0",
+    appVersion: "v1.2.1",
     showGlobalSettings: false,
 
     // --- 任务核心状态 ---
