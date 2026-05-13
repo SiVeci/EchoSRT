@@ -2,7 +2,7 @@
   <img src="frontend/logo.png" alt="EchoSRT Logo" width="180">
   <h1>EchoSRT 字幕工作台</h1>
   <p>
-    <img src="https://img.shields.io/badge/Version-v1.2.1-blue" alt="Version">
+    <img src="https://img.shields.io/badge/Version-v1.2.2-blue" alt="Version">
     <img src="https://img.shields.io/badge/Platform-Docker%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform">
     <img src="https://img.shields.io/badge/Python-3.10%20--%203.12-blue" alt="Python Version">
     <img src="https://img.shields.io/badge/Framework-FastAPI%20%7C%20Vue%203-orange" alt="Framework">
