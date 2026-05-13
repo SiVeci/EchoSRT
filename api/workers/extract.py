@@ -79,8 +79,11 @@ async def process_extract_task(task_id, config_payload, loop):
         if os.path.exists(err_audio_path):
             try: os.remove(err_audio_path)
             except: pass
-        if await get_task_status(task_id): 
+        
+        current_status = await get_task_status(task_id)
+        if current_status and current_status.get("current_step") != "cancelled": 
             await update_task_status(task_id, {"current_step": "error", "interrupted_step": "extracting"})
+            
         await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:

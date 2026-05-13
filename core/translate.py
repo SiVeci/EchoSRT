@@ -47,17 +47,26 @@ async def translate_batch(client, model_name, system_prompt, batch_content, batc
 
             if cancel_event:
                 cancel_task = asyncio.create_task(cancel_event.wait())
-                done, pending = await asyncio.wait(
-                    [api_task, cancel_task], 
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                for p in pending:
-                    p.cancel()
-                if cancel_task in done:
-                    raise asyncio.CancelledError()
-                completion = api_task.result()
+                try:
+                    done, pending = await asyncio.wait(
+                        [api_task, cancel_task], 
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    for p in pending:
+                        p.cancel()
+                    if cancel_task in done:
+                        raise asyncio.CancelledError()
+                    completion = api_task.result()
+                except asyncio.CancelledError:
+                    api_task.cancel()
+                    cancel_task.cancel()
+                    raise
             else:
-                completion = await api_task
+                try:
+                    completion = await api_task
+                except asyncio.CancelledError:
+                    api_task.cancel()
+                    raise
 
             if not completion.choices:
                 raise Exception(f"大模型未返回任何 choices。响应: {completion}")

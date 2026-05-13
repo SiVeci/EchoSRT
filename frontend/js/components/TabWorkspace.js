@@ -90,6 +90,9 @@ export default {
                             <el-tag v-if="store.pipelineStatus[scope.row.task_id]" size="small" :type="getStatusType(store.pipelineStatus[scope.row.task_id].current_step)" effect="dark">
                                 {{ getStatusText(store.pipelineStatus[scope.row.task_id].current_step) }}
                             </el-tag>
+                            <el-tag v-else-if="scope.row.current_step && scope.row.current_step !== 'idle'" size="small" :type="getStatusType(scope.row.current_step)" effect="plain">
+                                {{ getStatusText(scope.row.current_step) }}
+                            </el-tag>
                             <el-tag v-else size="small" type="info">已空闲</el-tag>
                         </template>
                     </el-table-column>
@@ -255,43 +258,62 @@ export default {
             nextTick(() => { initSortable(); });
         });
 
+        // 本地维护一个上一秒的活跃任务集合，用于精确捕获任务终结的瞬间
+        const previousRunningTasks = new Set();
+        // 同样维护一个上一秒的活跃任务状态映射，用于捕获状态切换
+        const previousTaskStates = new Map();
+
         // 智能状态监听：增量更新 (局部刷新)，只查变化的任务，杜绝全量扫盘
-        watch(() => store.pipelineStatus, async (newVal, oldVal) => {
-            if (!oldVal) return;
+        watch(() => store.pipelineStatus, async (currentStatus) => {
+            if (!currentStatus) return;
             const tasksToRefresh = [];
+            const currentRunningTaskIds = Object.keys(currentStatus);
             
             // 1. 检测活跃任务的状态切换 (例如提取 -> 识别)
-            for (const taskId in newVal) {
-                const currentStep = newVal[taskId]?.current_step;
-                const previousStep = oldVal[taskId]?.current_step;
+            for (const taskId of currentRunningTaskIds) {
+                const currentStep = currentStatus[taskId]?.current_step;
+                const previousStep = previousTaskStates.get(taskId);
                 
                 if (currentStep !== previousStep && ['pending_transcribe', 'transcribing', 'pending_translate', 'translating'].includes(currentStep)) {
                     tasksToRefresh.push(taskId);
                 }
+                // 更新状态映射
+                previousTaskStates.set(taskId, currentStep);
             }
             
-            // 2. 补丁：检测生命周期结束的任务 (Completed/Error)
-            // 后端 API /pipeline/status 会过滤掉 completed 和 error 的任务。
-            // 因此当任务真正完成时，它会从 newVal 中消失。我们需要检测这种“消失”来刷新它的最终资产。
-            for (const taskId in oldVal) {
-                if (!newVal[taskId] && !tasksToRefresh.includes(taskId)) {
+            // 2. 核心补丁：检测生命周期结束的任务 (Completed/Error/Cancelled)
+            // 如果一个任务存在于 "上一秒的活跃集合"，但不存在于 "当前的活跃集合"
+            // 说明它刚刚结束，必须去后端捞一次最终的底稿状态（包括最终资产和最终 current_step）
+            previousRunningTasks.forEach(taskId => {
+                if (!currentRunningTaskIds.includes(taskId) && !tasksToRefresh.includes(taskId)) {
                     tasksToRefresh.push(taskId);
+                    previousTaskStates.delete(taskId);
                 }
-            }
+            });
+            
+            // 3. 更新 "上一秒活跃集合" 为 "当前活跃集合"
+            previousRunningTasks.clear();
+            currentRunningTaskIds.forEach(id => previousRunningTasks.add(id));
             
             if (tasksToRefresh.length > 0) {
                 // 增加 1.5 秒延迟，确保后端文件系统彻底落盘并刷新目录元数据，避免因 size 为 0 导致判断失败
                 setTimeout(async () => {
                     for (const taskId of tasksToRefresh) {
                         try {
-                            const latestData = await getTaskAssets(taskId);
                             const targetIndex = taskList.value.findIndex(t => t.task_id === taskId);
+                            if (targetIndex === -1) {
+                                // 任务已从本地视图中被用户删除，直接跳过请求，防止 404
+                                continue;
+                            }
+                            
+                            const latestData = await getTaskAssets(taskId);
                             if (targetIndex !== -1) {
                                 // O(1) 局部精准更新，UI 绝对无闪烁
                                 taskList.value[targetIndex].has_video = latestData.has_video;
                                 taskList.value[targetIndex].has_audio = latestData.has_audio;
                                 taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
                                 taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
+                                taskList.value[targetIndex].current_step = latestData.current_step;
                             }
                             
                             // 同步更新焦点任务资产，修复 Bug 1：实现下载按钮按阶段依次点亮

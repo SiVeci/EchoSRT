@@ -23,6 +23,10 @@ global_cancel_events: dict[str, asyncio.Event] = {}
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
+# 终结态集合：进入这些状态的任务不再需要保留在内存中
+# get_task_status() 会从磁盘 state.json 回退读取，所以清理后功能无损
+TERMINAL_STATES = {"completed", "error", "cancelled"}
+
 async def get_task_status(task_id: str) -> dict:
     """获取任务状态（优先从内存读取，否则从 state.json 读取）"""
     if task_id in global_tasks_status:
@@ -61,6 +65,12 @@ async def update_task_status(task_id: str, status_data: dict):
         with open(state_path, "w", encoding="utf-8") as f:
             json.dump(global_tasks_status[task_id], f, ensure_ascii=False, indent=2)
     await asyncio.to_thread(_write)
+    
+    current_step = status_data.get("current_step")
+    if current_step in TERMINAL_STATES:
+        global_tasks_status.pop(task_id, None)
+        global_cancel_events.pop(task_id, None)
+        print(f"[内存回收] 任务 {task_id} 已进入终结态 ({current_step})，内存缓存已释放")
 
 def delete_task_status(task_id: str):
     """清理内存中的任务状态缓存"""

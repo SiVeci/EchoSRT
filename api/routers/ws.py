@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ..ws_manager import manager
-from ..state import global_tasks_status
+from ..state import global_tasks_status, TERMINAL_STATES
 
 router = APIRouter()
 
@@ -22,6 +22,6 @@ async def get_pipeline_status():
     # 增量优化：只返回当前正在运行、异常中断或报错的任务，过滤掉已完成的陈旧状态
     active_tasks = {
         tid: status for tid, status in global_tasks_status.items() 
-        if status.get("current_step") not in ["completed"]
+        if status.get("current_step") not in TERMINAL_STATES
     }
     return active_tasks

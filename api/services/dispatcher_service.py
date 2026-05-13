@@ -125,7 +125,7 @@ async def cancel_all_tasks():
     active_states = ["pending_extract", "extracting", "pending_transcribe", "transcribing", "pending_translate", "translating"]
     
     # 群发毒丸
-    for task_id, cancel_event in global_cancel_events.items():
+    for task_id, cancel_event in list(global_cancel_events.items()):
         task_status = await get_task_status(task_id)
         if task_status:
             current_step = task_status.get("current_step")

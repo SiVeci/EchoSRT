@@ -126,7 +126,8 @@ def run_api_transcription(
     output_srt_path: str,
     asr_config: dict,
     system_config: dict,
-    progress_callback=None
+    progress_callback=None,
+    cancel_event=None
 ):
     """
     调用云端标准 OpenAI Audio API 进行语音识别，直接生成 SRT 字幕。
@@ -243,6 +244,11 @@ def run_api_transcription(
 
     try:
         for idx, chunk in enumerate(audio_chunks):
+            if cancel_event and cancel_event.is_set():
+                if progress_callback:
+                    progress_callback("⚠️ 检测到取消请求，终止云端识别...")
+                raise Exception("任务已被手动中断")
+
             offset_seconds = current_offset
             chunk_to_process = chunk
             

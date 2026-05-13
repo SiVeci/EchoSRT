@@ -169,7 +169,15 @@ def get_single_task(task_id: str):
         
     has_video = has_abs_video or any(f.startswith("video.") and check_valid(os.path.join(task_dir, f)) for f in os.listdir(task_dir))
     
-    return { "task_id": task_id, "base_name": base_name, "has_video": has_video, "has_audio": check_valid(os.path.join(task_dir, "audio.wav")), "has_original_srt": check_valid(os.path.join(task_dir, "original.srt")), "has_translated_srt": check_valid(os.path.join(task_dir, "translated.srt")), "created_at": os.path.getmtime(task_dir) }
+    current_step = "idle"
+    state_path = os.path.join(task_dir, "state.json")
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                current_step = json.load(f).get("current_step", "idle")
+        except Exception: pass
+
+    return { "task_id": task_id, "base_name": base_name, "has_video": has_video, "has_audio": check_valid(os.path.join(task_dir, "audio.wav")), "has_original_srt": check_valid(os.path.join(task_dir, "original.srt")), "has_translated_srt": check_valid(os.path.join(task_dir, "translated.srt")), "created_at": os.path.getmtime(task_dir), "current_step": current_step }
 
 def get_all_tasks():
     tasks = []
@@ -192,13 +200,21 @@ def get_all_tasks():
                     if abs_path and os.path.exists(abs_path):
                         has_abs_video = True
             except Exception: pass
+            
+        current_step = "idle"
+        state_path = os.path.join(task_dir, "state.json")
+        if os.path.exists(state_path):
+            try:
+                with open(state_path, "r", encoding="utf-8") as f:
+                    current_step = json.load(f).get("current_step", "idle")
+            except Exception: pass
                 
         def check_valid(file_path):
             return os.path.exists(file_path) and os.path.getsize(file_path) > 5
             
         has_video = has_abs_video or any(f.startswith("video.") and check_valid(os.path.join(task_dir, f)) for f in os.listdir(task_dir))
         
-        tasks.append({ "task_id": task_id, "base_name": base_name, "sort_weight": sort_weight, "has_video": has_video, "has_audio": check_valid(os.path.join(task_dir, "audio.wav")), "has_original_srt": check_valid(os.path.join(task_dir, "original.srt")), "has_translated_srt": check_valid(os.path.join(task_dir, "translated.srt")), "created_at": os.path.getmtime(task_dir) })
+        tasks.append({ "task_id": task_id, "base_name": base_name, "sort_weight": sort_weight, "has_video": has_video, "has_audio": check_valid(os.path.join(task_dir, "audio.wav")), "has_original_srt": check_valid(os.path.join(task_dir, "original.srt")), "has_translated_srt": check_valid(os.path.join(task_dir, "translated.srt")), "created_at": os.path.getmtime(task_dir), "current_step": current_step })
         
     # 排序规则优先按 sort_weight (降序)，再按 created_at (降序)
     return sorted(tasks, key=lambda x: (x["sort_weight"], x["created_at"]), reverse=True)

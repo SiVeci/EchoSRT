@@ -124,7 +124,39 @@ async def process_transcribe_task(task_id, config_payload, loop):
             def api_progress_callback(msg_text):
                 msg = {"status": "processing", "step": "transcribing", "message": msg_text}
                 asyncio.run_coroutine_threadsafe(manager.send_json(msg, task_id), loop)
-            await loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, system_settings, api_progress_callback)
+            
+            import threading
+            cancel_event = global_cancel_events.get(task_id)
+            thread_cancel = threading.Event()
+            
+            async def watch_cancel():
+                if cancel_event:
+                    await cancel_event.wait()
+                    thread_cancel.set()
+            cancel_watcher = asyncio.create_task(watch_cancel()) if cancel_event else None
+            
+            try:
+                api_future = loop.run_in_executor(None, run_api_transcription, audio_path, output_srt, online_asr_settings, system_settings, api_progress_callback, thread_cancel)
+                
+                if cancel_event:
+                    cancel_task = asyncio.create_task(cancel_event.wait())
+                    done, pending = await asyncio.wait(
+                        [api_future, cancel_task], return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if cancel_task in done:
+                        api_future.cancel()
+                        try:
+                            await api_future
+                        except asyncio.CancelledError:
+                            pass
+                        raise asyncio.CancelledError("任务已被手动中断")
+                    # 如果 api_future 先完成，要抛出其中可能包含的异常
+                    api_future.result()
+                else:
+                    await api_future
+            finally:
+                if cancel_watcher:
+                    cancel_watcher.cancel()
 
         else:
             model_settings = config_payload.get("model_settings", {})
@@ -202,8 +234,11 @@ async def process_transcribe_task(task_id, config_payload, loop):
         if os.path.exists(err_srt_path):
             try: os.remove(err_srt_path)
             except: pass
-        if await get_task_status(task_id): 
+            
+        current_status = await get_task_status(task_id)
+        if current_status and current_status.get("current_step") != "cancelled": 
             await update_task_status(task_id, {"current_step": "error", "interrupted_step": "transcribing"})
+            
         await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:

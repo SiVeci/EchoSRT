@@ -38,7 +38,33 @@ async def process_translate_task(task_id, config_payload, loop):
         await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
         
         cancel_event = global_cancel_events.get(task_id)
-        await run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback, cancel_event)
+        
+        # 封装异步任务以支持 first_completed 抢占机制
+        trans_task = asyncio.create_task(
+            run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback, cancel_event)
+        )
+        
+        if cancel_event:
+            wait_cancel_task = asyncio.create_task(cancel_event.wait())
+            done, pending = await asyncio.wait(
+                [trans_task, wait_cancel_task], return_when=asyncio.FIRST_COMPLETED
+            )
+            for p in pending:
+                p.cancel()
+            if wait_cancel_task in done:
+                # 优雅阻断：确保底层的 OpenAI 协程也被取消，避免 Http Client 孤儿报错
+                trans_task.cancel()
+                try:
+                    await trans_task
+                except asyncio.CancelledError:
+                    pass
+                raise asyncio.CancelledError()
+            
+            # 抛出 trans_task 可能产生的异常
+            if trans_task.exception():
+                raise trans_task.exception()
+        else:
+            await trans_task
 
         # [薛定谔修复] 将当时使用的目标语种固化到该任务专属的 meta.json 中
         target_lang = llm_config.get("target_language", "zh")
@@ -59,8 +85,11 @@ async def process_translate_task(task_id, config_payload, loop):
         if os.path.exists(err_translated_path):
             try: os.remove(err_translated_path)
             except: pass
-        if await get_task_status(task_id):
+            
+        current_status = await get_task_status(task_id)
+        if current_status and current_status.get("current_step") != "cancelled":
             await update_task_status(task_id, {"current_step": "error", "interrupted_step": "translating"})
+            
         await manager.send_json({"status": "error", "message": "任务已被手动中断"}, task_id)
 
     except Exception as e:

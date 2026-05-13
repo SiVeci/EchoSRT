@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import config, tasks, ws, library
 from api.services import config_service
-from api.state import global_tasks_status, update_task_status
+from api.state import global_tasks_status, update_task_status, TERMINAL_STATES
 from api.workers import worker_extract_loop, worker_transcribe_loop, worker_translate_loop
 
 _worker_tasks = set()
@@ -51,6 +51,11 @@ async def lifespan(app: FastAPI):
                         # 持久化修正后的状态
                         with open(state_path, "w", encoding="utf-8") as f:
                             json.dump(state, f, ensure_ascii=False, indent=2)
+                    
+                    # 终结态任务不需要加载到内存缓存
+                    if state.get("current_step") in TERMINAL_STATES:
+                        print(f"[*] 跳过终结态任务 {task_id} (状态: {state.get('current_step')})，不加载到内存")
+                        continue
                     
                     global_tasks_status[task_id] = state
                 except Exception as e:
