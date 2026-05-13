@@ -50,13 +50,6 @@ GET /api/tasks/{task_id}/download/{type}
 - `audio`: 返回 `audio.wav`，下载名为 `{base_name}.wav`
 - `video`: 返回 `video.*`，下载名为 `{base_name}{ext}`
 
-### CLI 导出规则 (main.py)
-
-当直接使用 `main.py` 在本地执行时，产物将生成在 **视频同级目录** 下：
-- 原文字幕：`{原文件名}.srt`
-- 翻译字幕：`{原文件名}_translated.srt`
-- 临时音频：`{原文件名}_temp.wav` (处理完成后自动清理)
-
 ---
 
 ## 文件命名规则

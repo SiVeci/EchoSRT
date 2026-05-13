@@ -65,13 +65,15 @@ export const store = reactive({
                     api_key: "",
                     base_url: "https://api.openai.com/v1",
                     model_name: "gpt-4o",
-                    batch_size: 100,
+                    batch_size: 50,
                     concurrent_workers: 3,
+                    max_tokens: 8192,
+                    temperature: 1.0,
                     system_prompt: "",
                     timeout_settings: { connect: 15, read: 300 }
                 }
             ],
-            target_language: "chs",
+            target_language: "zh",
             use_network_proxy: false
         },
         online_asr_settings: {

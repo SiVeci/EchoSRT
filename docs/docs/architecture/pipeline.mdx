@@ -57,8 +57,6 @@ async def lifespan(app: FastAPI):
     yield
 ```
 
-> ⚠️ **注意**：`main.py` 是独立 CLI 工具，采用传统的同步线性逻辑，不涉及此队列架构。
-
 ### Worker 通用模板
 
 ```python
