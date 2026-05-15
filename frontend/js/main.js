@@ -61,7 +61,7 @@ const app = createApp({
                 store.dicts.models = modelData;
                 store.systemInfo = sysInfo;
 
-                addLog("✅ 基础配置加载完成，就绪！", "success");
+                addLog("基础配置加载完成，就绪！", "success");
                 
                 // 探测并恢复意外中断的任务状态
                 await restoreActiveTask();
@@ -83,7 +83,7 @@ const app = createApp({
                     );
                 }
             } catch (e) {
-                addLog(`❌ 初始化失败: ${e.message}`, "error");
+                addLog(`初始化失败: ${e.message}`, "error");
                 ElementPlus.ElMessage.error("无法连接到后端服务，请检查 app.py 是否启动。");
             }
             
@@ -124,7 +124,7 @@ const app = createApp({
             const activeTaskId = localStorage.getItem("echo_srt_active_task");
             if (!activeTaskId) return;
             
-            addLog(`🔄 发现未完成的任务记录，正在探测后端状态...`, "warning");
+            addLog(`发现未完成的任务记录，正在探测后端状态...`, "warning");
             try {
                 // 1. 恢复任务面板的资产标识
                 const tasks = await getTasks();
@@ -142,7 +142,7 @@ const app = createApp({
                 const statusData = await getTaskStatus(activeTaskId);
                 if (statusData.status === "processing") {
                     store.isProcessing = true;
-                    addLog(`⚡ 后端任务仍在运行，正在重新接管数据流...`, "success");
+                    addLog(`后端任务仍在运行，正在重新接管数据流...`, "success");
                     connectTaskMonitor(activeTaskId, null, null);
                 } else {
                     localStorage.removeItem("echo_srt_active_task");
@@ -166,13 +166,13 @@ const app = createApp({
 
             if (isRetry) {
                 store.isProcessing = true;
-                addLog(`🔄 发现任务处于异常状态，正在尝试断点续传重试...`, "warning");
+                addLog(`发现任务处于异常状态，正在尝试断点续传重试...`, "warning");
                 connectTaskMonitor(store.taskId, null, null);
                 try {
                     await retryTask(store.taskId);
                     return;
                 } catch (e) {
-                    addLog(`❌ 重试失败: ${e.message}`, "error");
+                    addLog(`重试失败: ${e.message}`, "error");
                     store.isProcessing = false;
                     return;
                 }
@@ -215,7 +215,7 @@ const app = createApp({
             }
 
             store.isProcessing = true;
-            addLog(`🚀 启动工作流，执行链路: [ ${steps.join(" ➡️ ")} ]`, "success");
+            addLog(`启动工作流，执行链路: [ ${steps.join(" -> ")} ]`, "success");
 
             connectTaskMonitor(
                 store.taskId,
@@ -228,13 +228,13 @@ const app = createApp({
                     // 动态更新完成后的进度条指示
                     if (includeTranslation || store.assets.hasTranslatedSrt) {
                         store.activeStep = 5; // 全量进度条圆满
-                        addLog("🎉 全量工作流完美收官！", "success");
+                        addLog("全量工作流完美收官！", "success");
                     } else {
                         store.activeStep = 4; // 停留在翻译待命状态
-                        addLog("🎉 提取工作流执行完毕！原声字幕已生成。", "success");
+                        addLog("提取工作流执行完毕，原声字幕已生成。", "success");
                     }
                     
-                    ElementPlus.ElMessage.success("🎉 流程顺利完成！请在右侧控制台下载产物。");
+                    ElementPlus.ElMessage.success("流程顺利完成！请在右侧控制台下载产物。");
                 },
                 (error) => {
                     ElementPlus.ElMessage.error(`工作流异常: ${error.message}`);

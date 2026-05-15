@@ -7,12 +7,12 @@ export default {
     template: `
         <div class="workspace-container">
             <el-alert title="提示" type="info" show-icon style="margin-bottom: 20px;" :closable="false">
-                请将需要处理的视频或音频源文件拖拽至下方区域以新建任务。💡 提示：在此处上传的任何格式音频都会自动经过标准化重采样，以获取最佳的 AI 识别准确率。
+                请将需要处理的视频或音频源文件拖拽至下方区域以新建任务。在此处上传的任何格式音频都会自动经过标准化重采样，以获取最佳的 AI 识别准确率。
             </el-alert>
         
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div class="card-title">📁 新建任务</div>
+                    <div class="card-title"><el-icon style="margin-right:4px;"><Folder /></el-icon>新建任务</div>
                 </template>
             <el-upload
                 class="compact-upload"
@@ -44,7 +44,7 @@ export default {
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
                     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                        <span class="card-title">🚥 流水线看板与资产库</span>
+                        <span class="card-title"><el-icon style="margin-right:4px;"><DataBoard /></el-icon>流水线看板与资产库</span>
                         <div style="display: flex; gap: 10px;">
                             <el-button type="danger" size="small" plain :disabled="taskList.length === 0" @click="clearAllTasks">
                                 <el-icon><Delete /></el-icon> 一键清空
@@ -103,8 +103,8 @@ export default {
                                     <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">视频</el-tag>
                                     <template #dropdown>
                                         <el-dropdown-menu>
-                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
-                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                            <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" icon="Delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">删除</el-dropdown-item>
                                         </el-dropdown-menu>
                                     </template>
                                 </el-dropdown>
@@ -114,8 +114,8 @@ export default {
                                     <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">音频</el-tag>
                                     <template #dropdown>
                                         <el-dropdown-menu>
-                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
-                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                            <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" icon="Delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">删除</el-dropdown-item>
                                         </el-dropdown-menu>
                                     </template>
                                 </el-dropdown>
@@ -125,8 +125,8 @@ export default {
                                     <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">原声</el-tag>
                                     <template #dropdown>
                                         <el-dropdown-menu>
-                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
-                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                            <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" icon="Delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">删除</el-dropdown-item>
                                         </el-dropdown-menu>
                                     </template>
                                 </el-dropdown>
@@ -136,8 +136,8 @@ export default {
                                     <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">翻译</el-tag>
                                     <template #dropdown>
                                         <el-dropdown-menu>
-                                            <el-dropdown-item command="download">⬇️ 下载</el-dropdown-item>
-                                            <el-dropdown-item command="delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">🗑️ 删除</el-dropdown-item>
+                                            <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
+                                            <el-dropdown-item command="delete" icon="Delete" :disabled="getAssetCount(scope.row) <= 1" :title="getAssetCount(scope.row) <= 1 ? '最后一份资产，如需清理请直接删除该任务' : ''">删除</el-dropdown-item>
                                         </el-dropdown-menu>
                                     </template>
                                 </el-dropdown>
@@ -155,7 +155,10 @@ export default {
                 </el-table>
             </el-card>
 
-            <el-dialog v-model="showLibraryModal" title="🔍 媒体库扫描发现" width="800px">
+            <el-dialog v-model="showLibraryModal" width="800px">
+                <template #header>
+                    <el-icon style="margin-right:4px;"><Search /></el-icon> 媒体库扫描发现
+                </template>
                 <div style="margin-bottom: 15px; color: #606266; font-size: 14px;">
                     共发现 <strong style="color: #409EFF;">{{ scanResults.length }}</strong> 个新视频。勾选并点击“导入”即可将其转为正式任务。
                 </div>
@@ -224,7 +227,7 @@ export default {
 
                     // 越界拦截：严禁插队或跨越运行中的任务
                     if (newIndex <= lastRunningIndex || oldIndex <= lastRunningIndex) {
-                        ElementPlus.ElMessage.warning("⚠️ 无法越过正在执行的任务！已开始的队列不支持插队。");
+                        ElementPlus.ElMessage.warning("无法越过正在执行的任务！已开始的队列不支持插队。");
                         // 强制清空再写入数组，使得 Vue 的虚拟 DOM 能把 Sortable 修改的真实 DOM 完美复原
                         const clone = [...taskList.value];
                         taskList.value = [];
@@ -345,11 +348,11 @@ export default {
         };
         const getStatusText = (step) => {
             const map = {
-                'pending_extract': '排队提音中', 'extracting': '▶ 正在提音',
-                'pending_transcribe': '排队识别中', 'transcribing': '▶ 正在识别',
-                'pending_translate': '排队翻译中', 'translating': '▶ 正在翻译',
-                'completed': '✔ 完毕收工', 'error': '✖ 发生错误', 'cancelled': '已取消',
-                'interrupted': '⚠️ 异常中断'
+                'pending_extract': '排队提音中', 'extracting': '正在提音',
+                'pending_transcribe': '排队识别中', 'transcribing': '正在识别',
+                'pending_translate': '排队翻译中', 'translating': '正在翻译',
+                'completed': '完毕收工', 'error': '发生错误', 'cancelled': '已取消',
+                'interrupted': '异常中断'
             };
             return map[step] || step;
         };
@@ -430,9 +433,9 @@ export default {
                         const res = await uploadAsset(options.file, assetType, null, (percent) => {
                             currentUploadProgress.value = percent;
                         });
-                        addLog(`✅ 上传成功！任务分配 ID: ${res.task_id}`, "success");
+                        addLog(`上传成功！任务分配 ID: ${res.task_id}`, "success");
                     } catch (e) {
-                        addLog(`❌ 上传失败 [${options.file.name}]: ${e.message}`, "error");
+                        addLog(`上传失败 [${options.file.name}]: ${e.message}`, "error");
                     } finally {
                         // 每当有一个文件物理上传完毕，立刻刷新一次看板，实现“边传边显示”的效果
                         fetchTasks();
@@ -498,11 +501,11 @@ export default {
             const enableProxy = store.config.system_settings.enable_global_proxy;
             if (enableProxy && proxyUrl) {
                 try {
-                    addLog(`🔄 正在测试代理服务器连通性: ${proxyUrl}`, "info");
+                    addLog(`正在测试代理服务器连通性: ${proxyUrl}`, "info");
                     await testProxy(proxyUrl);
-                    addLog(`✅ 代理服务器连通性测试通过`, "success");
+                    addLog(`代理服务器连通性测试通过`, "success");
                 } catch (e) {
-                    addLog(`❌ 代理测试失败，已终止任务调度: ${e.message}`, "error");
+                    addLog(`代理测试失败，已终止任务调度: ${e.message}`, "error");
                     ElementPlus.ElMessage.error(`代理服务器连接失败，请检查设置`);
                     return; // 连通性测试不通过，直接阻断后续流水线分发
                 }
@@ -517,9 +520,9 @@ export default {
                 if (currentStatus === 'interrupted' || currentStatus === 'error') {
                     try {
                         await retryTask(task.task_id);
-                        addLog(`🔄 任务 ${task.base_name} 正在尝试断点续传重试...`, "success");
+                        addLog(`任务 ${task.base_name} 正在尝试断点续传重试...`, "success");
                     } catch (e) {
-                        addLog(`❌ 任务 ${task.base_name} 重试失败: ${e.message}`, "error");
+                        addLog(`任务 ${task.base_name} 重试失败: ${e.message}`, "error");
                     }
                     continue; // 跳过常规下发逻辑
                 }
@@ -536,9 +539,9 @@ export default {
                 if (steps.length > 0) {
                     try {
                         await executeTask(task.task_id, steps, store.config);
-                        addLog(`🚀 任务 ${task.base_name} 已加入调度车间`, "success");
+                        addLog(`任务 ${task.base_name} 已加入调度车间`, "success");
                     } catch (e) {
-                        addLog(`❌ 任务 ${task.base_name} 调度失败: ${e.message}`, "error");
+                        addLog(`任务 ${task.base_name} 调度失败: ${e.message}`, "error");
                     }
                 }
             }
@@ -557,7 +560,7 @@ export default {
             
             // 清空旧日志，迎接焦点任务的新日志
             store.logs.splice(0, store.logs.length);
-            addLog(`👀 焦点已切换至监视任务: ${task.base_name}`, "info");
+            addLog(`焦点已切换至监视任务: ${task.base_name}`, "info");
             
             // 清空细粒度状态，防止 SPA 状态泄漏产生视觉残影
             store.taskState.extractedTime = "";
@@ -573,7 +576,7 @@ export default {
             else if (task.has_video) store.activeStep = 2;
             else store.activeStep = 1;
             
-            addLog(`📂 已加载历史任务: ${task.base_name}`, "info");
+            addLog(`已加载历史任务: ${task.base_name}`, "info");
             ElementPlus.ElMessage.success("任务加载成功！");
         };
 
@@ -653,7 +656,7 @@ export default {
         const isImporting = ref(false);
 
         const handleOpenLibraryScanner = async () => {
-            const loading = ElementPlus.ElLoading.service({ lock: true, text: '🔍 正在深度扫描媒体库...' });
+            const loading = ElementPlus.ElLoading.service({ lock: true, text: '正在深度扫描媒体库...' });
             try {
                 const res = await scanLibrary();
                 scanResults.value = res.new_files;

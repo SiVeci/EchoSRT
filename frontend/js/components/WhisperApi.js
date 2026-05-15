@@ -10,7 +10,7 @@ export default {
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5; border-top: none;">
                 <template #header>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span class="card-title">⚙️ 基础设置 (Basic)</span>
+                        <span class="card-title"><el-icon style="margin-right:4px;"><Setting /></el-icon>基础设置 (Basic)</span>
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 13px; color: #909399;">切换方案:</span>
                             <el-select v-model="store.config.online_asr_settings.active_profile_id" size="small" style="width: 150px;">
@@ -59,10 +59,10 @@ export default {
                             </span>
                         </template>
                         <el-select v-model="store.config.online_asr_settings.language" placeholder="自动检测 (Auto)" clearable filterable style="width: 100%;">
-                            <el-option-group label="🌟 常用语言">
+                            <el-option-group label="常用语言">
                                 <el-option v-for="lang in pinnedLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
                             </el-option-group>
-                            <el-option-group label="🌐 其他语言 (A-Z)">
+                            <el-option-group label="其他语言 (A-Z)">
                                 <el-option v-for="lang in otherLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
                             </el-option-group>
                         </el-select>

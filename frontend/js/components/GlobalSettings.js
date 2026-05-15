@@ -5,7 +5,10 @@ import { getConfig, updateConfig, restoreConfig, testProxy, getLibraryPaths, add
 export default {
     name: 'GlobalSettings',
     template: `
-        <el-dialog v-model="store.showGlobalSettings" title="⚙️ 全局设置与配置管理" width="650px" destroy-on-close>
+        <el-dialog v-model="store.showGlobalSettings" width="650px" destroy-on-close>
+            <template #header>
+                <el-icon style="margin-right:4px;"><Setting /></el-icon> 全局设置与配置管理
+            </template>
             <div style="margin-bottom: 20px;">
                 <div style="font-weight: bold; color: #303133; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
                     <el-icon style="font-size: 18px; color: #409EFF;"><Position /></el-icon> 全局网络代理
@@ -127,8 +130,8 @@ export default {
             }
             try { 
                 await updateConfig(store.config); 
-                if (proxyEnabled.value) ElementPlus.ElMessage.success("⚡ 全局网络代理总闸已通电！分流开关已激活。");
-                else ElementPlus.ElMessage.success("🔌 全局代理总闸已断电！所有模块强制直连。");
+                if (proxyEnabled.value) ElementPlus.ElMessage.success("全局网络代理总闸已通电，分流开关已激活。");
+                else ElementPlus.ElMessage.success("全局代理总闸已断电，所有模块强制直连。");
             } catch (e) {}
         };
 
@@ -140,7 +143,7 @@ export default {
         };
 
         const handleSaveConfig = async () => {
-            try { await updateConfig(store.config); ElementPlus.ElMessage.success("🎉 所有配置已成功保存！"); } 
+            try { await updateConfig(store.config); ElementPlus.ElMessage.success("所有配置已成功保存！"); }
             catch(e) { ElementPlus.ElMessage.error("保存配置失败: " + e.message); }
         };
 
@@ -168,7 +171,7 @@ export default {
                         if (store.config[key] && typeof store.config[key] === 'object') Object.assign(store.config[key], newConfig[key]);
                         else store.config[key] = newConfig[key];
                     });
-                    ElementPlus.ElMessage.success("✅ 已恢复系统默认配置！");
+                    ElementPlus.ElMessage.success("已恢复系统默认配置！");
                 } finally { loading.close(); }
             } catch (e) { if (e !== 'cancel') ElementPlus.ElMessage.error("恢复配置失败: " + (e.message || e)); }
         };

@@ -103,4 +103,4 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
     multiprocessing.set_start_method("spawn", force=True)
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False, log_level="warning")
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False, log_level="warning")

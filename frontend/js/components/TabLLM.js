@@ -12,7 +12,7 @@ export default {
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div class="card-title">📥 独立字幕输入通道</div>
+                    <div class="card-title"><el-icon style="margin-right:4px;"><Upload /></el-icon>独立字幕输入通道</div>
                 </template>
                 <div class="section-desc">
                     如果您已经拥有外部的生肉字幕文件，可在此直接上传，跳过前面的识别步骤。
@@ -34,7 +34,7 @@ export default {
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span class="card-title">⚙️ 翻译参数 (LLM)</span>
+                        <span class="card-title"><el-icon style="margin-right:4px;"><Setting /></el-icon>翻译参数 (LLM)</span>
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 13px; color: #909399;">切换方案:</span>
                             <el-select v-model="store.config.llm_settings.active_profile_id" size="small" style="width: 150px;">
@@ -116,10 +116,10 @@ export default {
                                     </span>
                                 </template>
                                 <el-select v-model="store.config.llm_settings.target_language" placeholder="选择翻译目标语言" filterable style="width: 100%;">
-                                    <el-option-group label="🌟 常用语言">
+                                    <el-option-group label="常用语言">
                                         <el-option v-for="lang in pinnedLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
                                     </el-option-group>
-                                    <el-option-group label="🌐 其他语言 (A-Z)">
+                                    <el-option-group label="其他语言 (A-Z)">
                                         <el-option v-for="lang in otherLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
                                     </el-option-group>
                                 </el-select>
@@ -225,10 +225,10 @@ export default {
                 </el-button>
                 
                 <span v-if="!store.assets.hasOriginalSrt" class="status-text-error">
-                    ⚠️ 请先在前方提供原声字幕
+                    请先在前方提供原声字幕
                 </span>
                 <span v-else-if="store.assets.hasTranslatedSrt" class="status-text-success">
-                    ✅ 翻译字幕已生成，请在右侧下载
+                    翻译字幕已生成，请在右侧下载
                 </span>
             </div>
         </div>
@@ -285,7 +285,7 @@ export default {
         const fixedPrompt = computed(() => {
             const lang = store.dicts.languages.find(l => l.code === store.config.llm_settings.target_language);
             const langName = lang ? lang.name : '中文';
-            return `你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【${langName}】。\n\n### 🚫 格式死命令：\n1. 保留原文结构：这是字幕片段，不要合并，不要遗漏。\n2. 保留时间轴：所有时间戳必须原样保留，不得修改。\n3. 只输出结果：不要加废话，直接输出 SRT 格式文本。`;
+            return `你是一位精通各国文化的专业影视字幕翻译。\n任务：将用户提供的 SRT 字幕片段翻译成【${langName}】。\n\n### 格式死命令：\n1. 保留原文结构：这是字幕片段，不要合并，不要遗漏。\n2. 保留时间轴：所有时间戳必须原样保留，不得修改。\n3. 只输出结果：不要加废话，直接输出 SRT 格式文本。`;
         });
 
         const refreshModels = async () => {
@@ -315,10 +315,10 @@ export default {
                 store.assets.hasOriginalSrt = true;
                 store.activeStep = 4;
                 store.refreshTasksTrigger++;
-                addLog(`✅ 外部字幕上传成功！任务 ID: \${res.task_id}`, "success");
+                addLog(`外部字幕上传成功！任务 ID: \${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("生肉字幕上传成功，可以直接开始翻译！");
             } catch (e) {
-                addLog(`❌ 字幕上传失败: \${e.message}`, "error");
+                addLog(`字幕上传失败: \${e.message}`, "error");
                 ElementPlus.ElMessage.error(`上传失败: \${e.message}`);
             } finally {
                 isUploading.value = false;
@@ -340,14 +340,14 @@ export default {
             const currentStatus = statusObj?.current_step;
             const interruptedStep = statusObj?.interrupted_step;
             const isRetry = (currentStatus === 'interrupted' || currentStatus === 'error') && (interruptedStep === 'translating' || interruptedStep === 'pending_translate');
-            addLog(isRetry ? "🔄 尝试断点重试任务..." : "▶️ 启动大模型智能翻译流...", "info");
+            addLog(isRetry ? "正在尝试断点重试任务..." : "启动大模型智能翻译流...", "info");
 
             connectTaskMonitor(
                 store.taskId,
                 () => {
                     store.assets.hasTranslatedSrt = true;
                     store.activeStep = 5;
-                    addLog("🎉 智能翻译全部完成！", "success");
+                    addLog("智能翻译全部完成！", "success");
                     ElementPlus.ElMessage.success("翻译成功！请点击右上角下载熟肉字幕。");
                 },
                 () => {}

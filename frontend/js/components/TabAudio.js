@@ -12,7 +12,7 @@ export default {
 
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5;">
                 <template #header>
-                    <div class="card-title">📥 独立音频输入通道</div>
+                    <div class="card-title"><el-icon style="margin-right:4px;"><Upload /></el-icon>独立音频输入通道</div>
                 </template>
                 <div class="section-desc">
                     如果您已经拥有独立的音频文件，可在此直接上传，跳过视频提取步骤。
@@ -36,7 +36,7 @@ export default {
                 <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
                     <el-collapse-item name="1">
                         <template #title>
-                            <span class="card-title">⚙️ 提取参数 (FFmpeg)</span>
+                            <span class="card-title"><el-icon style="margin-right:4px;"><Setting /></el-icon>提取参数 (FFmpeg)</span>
                         </template>
                         <el-form :model="store.config.ffmpeg_settings" label-width="140px" label-position="left" size="default">
                             <el-form-item>
@@ -93,10 +93,10 @@ export default {
                 </el-button>
                 
                 <span v-if="!store.assets.hasVideo" class="status-text-error">
-                    ⚠️ 请先在工作区上传视频
+                    请先在工作区上传视频
                 </span>
                 <span v-else-if="store.assets.hasAudio" class="status-text-success">
-                    ✅ 音频已就绪，可直接前往下一步
+                    音频已就绪，可直接前往下一步
                 </span>
             </div>
             
@@ -122,10 +122,10 @@ export default {
                 store.assets.hasAudio = true;
                 store.activeStep = 2; // 进度条更新：资产/音频已就绪
                 store.refreshTasksTrigger++;
-                addLog(`✅ 外部音频上传成功！任务 ID: ${res.task_id}`, "success");
+                addLog(`外部音频上传成功！任务 ID: ${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("音频上传成功，请前往【原声识别】页！");
             } catch (e) {
-                addLog(`❌ 音频上传失败: ${e.message}`, "error");
+                addLog(`音频上传失败: ${e.message}`, "error");
                 ElementPlus.ElMessage.error(`上传失败: ${e.message}`);
             } finally {
                 isUploading.value = false;
@@ -143,14 +143,14 @@ export default {
             const currentStatus = statusObj?.current_step;
             const interruptedStep = statusObj?.interrupted_step;
             const isRetry = (currentStatus === 'interrupted' || currentStatus === 'error') && (!interruptedStep || interruptedStep === 'extracting' || interruptedStep === 'pending_extract');
-            addLog(isRetry ? "🔄 尝试断点重试任务..." : "▶️ 启动 FFmpeg 音频提取...", "info");
+            addLog(isRetry ? "正在尝试断点重试任务..." : "启动 FFmpeg 音频提取...", "info");
 
             connectTaskMonitor(
                 store.taskId,
                 () => {
                     store.assets.hasAudio = true;
                     store.activeStep = 3; // 音频提取完毕，进入识别待命
-                    addLog("🎉 音频提取完毕！", "success");
+                    addLog("音频提取完毕！", "success");
                     ElementPlus.ElMessage.success("提取完毕！");
                 },
                 () => {}

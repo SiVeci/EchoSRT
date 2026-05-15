@@ -122,10 +122,10 @@
                   <el-icon><Setting /></el-icon>
                 </el-button>
                 <el-button type="success" size="large" @click="runPipeline(false)" plain>
-                  🎯 执行提取工作流 (仅原声字幕)
+                  <el-icon><Aim /></el-icon> 执行提取工作流 (仅原声字幕)
                 </el-button>
                 <el-button type="primary" size="large" @click="runPipeline(true)">
-                  🚀 执行全量工作流 (含智能翻译)
+                  <el-icon><Promotion /></el-icon> 执行全量工作流 (含智能翻译)
                 </el-button>
               </div>
             </div>
@@ -133,16 +133,28 @@
             <!-- 核心卡片及 Tab 切页 -->
             <el-card class="box-card" shadow="never">
               <el-tabs v-model="activeTab" class="main-tabs" stretch>
-                <el-tab-pane label="📁 任务工作区" name="workspace">
+                <el-tab-pane name="workspace">
+                  <template #label>
+                    <el-icon><Folder /></el-icon> 任务工作区
+                  </template>
                   <tab-workspace></tab-workspace>
                 </el-tab-pane>
-                <el-tab-pane label="🎵 提取音频" name="audio">
+                <el-tab-pane name="audio">
+                  <template #label>
+                    <el-icon><Headset /></el-icon> 提取音频
+                  </template>
                   <tab-audio></tab-audio>
                 </el-tab-pane>
-                <el-tab-pane label="🗣️ 原声识别" name="whisper">
+                <el-tab-pane name="whisper">
+                  <template #label>
+                    <el-icon><Microphone /></el-icon> 原声识别
+                  </template>
                   <tab-whisper></tab-whisper>
                 </el-tab-pane>
-                <el-tab-pane label="🌐 LLM 翻译" name="llm">
+                <el-tab-pane name="llm">
+                  <template #label>
+                    <el-icon><Connection /></el-icon> LLM 翻译
+                  </template>
                   <tab-llm></tab-llm>
                 </el-tab-pane>
               </el-tabs>

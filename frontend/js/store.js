@@ -132,9 +132,9 @@ export const connectTaskMonitor = (taskId, onSuccess, onError) => {
     const ws = new WebSocket(`${WS_BASE}/ws/progress/${taskId}`);
     currentWs = ws;
 
-    ws.onopen = () => addLog("🔗 已成功连接到后端实时监视器...", "success");
+    ws.onopen = () => addLog("已成功连接到后端实时监视器...", "success");
     ws.onerror = () => { 
-        addLog("❌ WebSocket 连接异常或中断！", "error"); 
+        addLog("WebSocket 连接异常或中断！", "error"); 
         store.isProcessing = false; 
         if (onError) onError(new Error("WS_ERROR"));
     };
@@ -179,7 +179,7 @@ export const connectTaskMonitor = (taskId, onSuccess, onError) => {
             currentWs = null;
         } else if (data.status === "error") {
             store.isProcessing = false;
-            addLog(`❌ 发生错误: ${data.message}`, "error");
+            addLog(`发生错误: ${data.message}`, "error");
             if (onError) onError(new Error(data.message));
             ws.close();
             currentWs = null;

@@ -259,7 +259,7 @@ export const downloadAsset = async (taskId, assetType, baseName) => {
             let loaded = 0;
             const reader = response.body.getReader();
             
-            const loading = ElementPlus.ElLoading.service({ lock: true, text: '⬇️ 正在保存至本地... [ 0% ]' });
+            const loading = ElementPlus.ElLoading.service({ lock: true, text: '正在保存至本地... [ 0% ]' });
             let lastTime = Date.now();
             let lastLoaded = 0;
 
@@ -275,14 +275,14 @@ export const downloadAsset = async (taskId, assetType, baseName) => {
                         const speed = (((loaded - lastLoaded) / ((now - lastTime) / 1000)) / 1024 / 1024).toFixed(1);
                         const percent = total ? Math.round((loaded / total) * 100) : '?';
                         const loadingTextEl = document.querySelector('.el-loading-text');
-                        if (loadingTextEl) loadingTextEl.textContent = `⬇️ 正在保存至本地... [ ${percent}% ] (${speed} MB/s)`;
+                        if (loadingTextEl) loadingTextEl.textContent = `正在保存至本地... [ ${percent}% ] (${speed} MB/s)`;
                         lastTime = now;
                         lastLoaded = loaded;
                     }
                 }
                 await writable.close();
                 loading.close();
-                ElementPlus.ElMessage.success("✅ 文件保存成功！");
+                ElementPlus.ElMessage.success("文件保存成功！");
             } catch (err) {
                 await writable.abort();
                 loading.close();

@@ -18,7 +18,7 @@ export default {
                 <el-tab-pane name="local">
                     <template #label>
                         <span style="font-weight: bold; font-size: 14px; display: inline-flex; align-items: center;">
-                            🖥️ 本地 GPU 引擎
+                            <el-icon style="margin-right:4px;"><Monitor /></el-icon>本地 GPU 引擎
                             <el-icon v-if="store.config.transcribe_settings.engine === 'local'" style="margin-left: 5px; color: #67C23A; font-weight: bold;"><Check /></el-icon>
                         </span>
                     </template>
@@ -29,7 +29,7 @@ export default {
                 <el-tab-pane name="api">
                     <template #label>
                         <span style="font-weight: bold; font-size: 14px; display: inline-flex; align-items: center;">
-                            ☁️ 云端 API 引擎
+                            <el-icon style="margin-right:4px;"><Cloudy /></el-icon>云端 API 引擎
                             <el-icon v-if="store.config.transcribe_settings.engine === 'api'" style="margin-left: 5px; color: #67C23A; font-weight: bold;"><Check /></el-icon>
                         </span>
                     </template>
@@ -56,10 +56,10 @@ export default {
                 </el-button>
                 
                 <span v-if="!store.assets.hasAudio" class="status-text-error">
-                    ⚠️ 请先在前方提供音频
+                    请先在前方提供音频
                 </span>
                 <span v-else-if="store.assets.hasOriginalSrt" class="status-text-success">
-                    ✅ 原声字幕已生成，可前往翻译
+                    原声字幕已生成，可前往翻译
                 </span>
             </div>
             
@@ -96,14 +96,14 @@ export default {
             const interruptedStep = statusObj?.interrupted_step;
             const isRetry = (currentStatus === 'interrupted' || currentStatus === 'error') && (interruptedStep === 'transcribing' || interruptedStep === 'pending_transcribe');
             const engineName = store.config.transcribe_settings.engine === 'api' ? "云端 API" : "本地 Whisper";
-            addLog(isRetry ? "🔄 尝试断点重试任务..." : `▶️ 启动 ${engineName} 识别引擎...`, "info");
+            addLog(isRetry ? "正在尝试断点重试任务..." : `启动 ${engineName} 识别引擎...`, "info");
 
             connectTaskMonitor(
                 store.taskId,
                 () => {
                     store.assets.hasOriginalSrt = true;
                     store.activeStep = 4; // 进入 LLM 翻译待命状态
-                    addLog("🎉 原声字幕提取完毕！", "success");
+                    addLog("原声字幕提取完毕！", "success");
                     ElementPlus.ElMessage.success("识别成功！已生成 SRT 原生字幕。");
                 },
                 () => {}

@@ -6,13 +6,13 @@ export default {
     name: 'WhisperLocal',
     template: `
         <div>
-            <el-alert v-if="store.systemInfo?.device === 'cuda'" title="🚀 已检测到 NVIDIA GPU，当前处于 CUDA 硬件加速模式。" :description="'显卡型号: ' + store.systemInfo.gpu_name" type="success" show-icon style="margin-bottom: 20px;" :closable="false"></el-alert>
-            <el-alert v-else-if="store.systemInfo?.device === 'cpu'" title="🐢 未检测到受支持的 NVIDIA 显卡，已自动降级为 CPU 慢速计算模式。" description="推理可能会非常耗时，建议使用较小的模型 (如 tiny/base) 或切换到云端 API 引擎。" type="warning" show-icon style="margin-bottom: 20px;" :closable="false"></el-alert>
+            <el-alert v-if="store.systemInfo?.device === 'cuda'" title="已检测到 NVIDIA GPU，当前处于 CUDA 硬件加速模式。" :description="'显卡型号: ' + store.systemInfo.gpu_name" type="success" show-icon style="margin-bottom: 20px;" :closable="false"></el-alert>
+            <el-alert v-else-if="store.systemInfo?.device === 'cpu'" title="未检测到受支持的 NVIDIA 显卡，已自动降级为 CPU 慢速计算模式。" description="推理可能会非常耗时，建议使用较小的模型 (如 tiny/base) 或切换到云端 API 引擎。" type="warning" show-icon style="margin-bottom: 20px;" :closable="false"></el-alert>
 
             <!-- 本地引擎：基础设置卡片 -->
             <el-card shadow="never" style="margin-bottom: 20px; border: 1px solid #ebeef5; border-top: none;">
                 <template #header>
-                    <div class="card-title">⚙️ 基础设置 (Basic)</div>
+                    <div class="card-title"><el-icon style="margin-right:4px;"><Setting /></el-icon>基础设置 (Basic)</div>
                 </template>
                 <el-form :model="store.config" label-width="140px" size="default" label-position="left">
                     <el-form-item>
@@ -35,9 +35,9 @@ export default {
                                         </span>
                                         <template v-else>
                                             <span v-if="model.downloaded" style="color: #909399; font-size: 12px; margin-right: 5px;">模型大小：{{ formatBytes(model.size_bytes) }}</span>
-                                            <el-tag v-if="model.downloaded" type="success" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px;">✅ 已下载</el-tag>
+                                            <el-tag v-if="model.downloaded" type="success" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px;"><el-icon style="margin-right:2px;"><CircleCheck /></el-icon>已下载</el-tag>
                                             <el-button v-if="model.downloaded" type="danger" link style="padding: 0; height: auto;" @click.stop.prevent="handleDeleteModel(model)" title="删除此模型以释放空间"><el-icon><Delete /></el-icon></el-button>
-                                            <el-tag v-if="!model.downloaded" type="info" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px; cursor: pointer;" @click.stop.prevent="handleDownloadModel(model)" title="点击手动从后台下载该模型">☁️ 云端</el-tag>
+                                            <el-tag v-if="!model.downloaded" type="info" size="small" effect="plain" style="border-radius: 12px; padding: 0 6px; cursor: pointer;" @click.stop.prevent="handleDownloadModel(model)" title="点击手动从后台下载该模型"><el-icon style="margin-right:2px;"><Cloudy /></el-icon>云端</el-tag>
                                         </template>
                                     </span>
                                 </el-option>
@@ -55,10 +55,10 @@ export default {
                             </span>
                         </template>
                         <el-select v-model="store.config.transcribe_settings.language" placeholder="自动检测 (Auto)" clearable filterable style="width: 100%;">
-                            <el-option-group label="🌟 常用语言">
+                            <el-option-group label="常用语言">
                                 <el-option v-for="lang in pinnedLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
                             </el-option-group>
-                            <el-option-group label="🌐 其他语言 (A-Z)">
+                            <el-option-group label="其他语言 (A-Z)">
                                 <el-option v-for="lang in otherLanguages" :key="lang.code" :label="\`\${lang.name} (\${lang.code})\`" :value="lang.code"></el-option>
                             </el-option-group>
                         </el-select>

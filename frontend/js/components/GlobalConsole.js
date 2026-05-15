@@ -8,7 +8,7 @@ export default {
         <el-card class="box-card" shadow="never">
             <template #header>
                 <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span class="card-title">⏱️ 任务监视器</span>
+                    <span class="card-title"><el-icon style="margin-right:4px;"><Timer /></el-icon>任务监视器</span>
                 </div>
             </template>
 
@@ -35,7 +35,7 @@ export default {
             <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
                 <el-collapse-item name="1">
                     <template #title>
-                        <span class="card-title" style="font-size: 14px;">📝 运行日志</span>
+                        <span class="card-title" style="font-size: 14px;"><el-icon style="margin-right:4px;"><Document /></el-icon>运行日志</span>
                     </template>
                     <div class="log-container" ref="logBox">
                         <div v-for="(log, index) in store.logs" :key="index" :class="'log-' + log.type">
