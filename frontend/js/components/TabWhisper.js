@@ -13,7 +13,7 @@ export default {
                 将提取出的音频输入 faster-whisper 引擎进行识别，生成带有精确时间轴的原始语言字幕 (SRT)。如果你已有现成的原生字幕文件，可直接跳到下一页 [LLM 翻译] 进行独立上传。
             </el-alert>
 
-            <el-tabs v-model="store.config.transcribe_settings.engine" style="margin-bottom: 20px;">
+            <el-tabs v-model="store.config.transcribe_settings.engine" style="margin-bottom: 20px;" stretch>
                 <!-- 引擎 1: 本地 GPU -->
                 <el-tab-pane name="local">
                     <template #label>

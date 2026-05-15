@@ -139,23 +139,31 @@
                   </template>
                   <tab-workspace></tab-workspace>
                 </el-tab-pane>
-                <el-tab-pane name="audio">
+                <el-tab-pane name="settings">
                   <template #label>
-                    <el-icon><Headset /></el-icon> 提取音频
+                    <el-icon><Setting /></el-icon> 参数设置区
                   </template>
-                  <tab-audio></tab-audio>
-                </el-tab-pane>
-                <el-tab-pane name="whisper">
-                  <template #label>
-                    <el-icon><Microphone /></el-icon> 原声识别
-                  </template>
-                  <tab-whisper></tab-whisper>
-                </el-tab-pane>
-                <el-tab-pane name="llm">
-                  <template #label>
-                    <el-icon><Connection /></el-icon> LLM 翻译
-                  </template>
-                  <tab-llm></tab-llm>
+                  <!-- 子标签页 -->
+                  <el-tabs v-model="activeSettingTab" class="sub-tabs" stretch>
+                    <el-tab-pane name="audio">
+                      <template #label>
+                        <el-icon><Headset /></el-icon> 提取音频
+                      </template>
+                      <tab-audio></tab-audio>
+                    </el-tab-pane>
+                    <el-tab-pane name="whisper">
+                      <template #label>
+                        <el-icon><Microphone /></el-icon> 原声识别
+                      </template>
+                      <tab-whisper></tab-whisper>
+                    </el-tab-pane>
+                    <el-tab-pane name="llm">
+                      <template #label>
+                        <el-icon><Connection /></el-icon> LLM 翻译
+                      </template>
+                      <tab-llm></tab-llm>
+                    </el-tab-pane>
+                  </el-tabs>
                 </el-tab-pane>
               </el-tabs>
             </el-card>

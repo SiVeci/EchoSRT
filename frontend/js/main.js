@@ -24,6 +24,8 @@ const app = createApp({
     setup() {
         // 控制当前激活的 Tab 页面，默认停留在第一页
         const activeTab = ref('workspace');
+        // 控制参数设置区内的子 Tab
+        const activeSettingTab = ref('audio');
 
         // 监听运行状态，同步到 localStorage
         watch(() => store.isProcessing, (isProcessing) => {
@@ -254,6 +256,7 @@ const app = createApp({
 
         return {
             activeTab,
+            activeSettingTab,
             store,
             runPipeline
         };
