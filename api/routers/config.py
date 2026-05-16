@@ -47,6 +47,10 @@ def get_download_status():
 def get_llm_models(api_key: str, base_url: str = "https://api.openai.com/v1"):
     return config_service.get_llm_models(api_key, base_url)
 
+@router.get("/llm/local_models")
+def get_local_llm_models():
+    return config_service.get_local_llm_models()
+
 @router.get("/asr/models")
 def get_asr_models(api_key: str, base_url: str = "https://api.openai.com/v1"):
     return config_service.get_asr_models(api_key, base_url)

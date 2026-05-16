@@ -2,7 +2,8 @@
   "system_settings": {
     "network_proxy": "",
     "enable_global_proxy": false,
-    "use_proxy_for_model_download": false
+    "use_proxy_for_model_download": false,
+    "vram_mutual_exclusion": true
   },
   "secrets": {
     "hf_token": ""
@@ -56,6 +57,7 @@
     "end_time": ""
   },
   "llm_settings": {
+    "engine": "api",
     "active_profile_id": "default",
     "profiles": [
       {
@@ -75,6 +77,12 @@
         }
       }
     ],
+    "local_settings": {
+      "model_path": "",
+      "n_gpu_layers": -1,
+      "n_ctx": 4096,
+      "idle_timeout": 300
+    },
     "target_language": "zh",
     "use_network_proxy": false
   },

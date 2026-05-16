@@ -21,6 +21,9 @@ global_library_discoveries: dict[str, dict] = {}
 # 全局取消事件字典 (用于手动中断任务)
 global_cancel_events: dict[str, asyncio.Event] = {}
 
+# 全局显存互斥锁 (用于保护本地 LLM 和 本地 Whisper)
+gpu_lock = asyncio.Lock()
+
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
 # 终结态集合：进入这些状态的任务不再需要保留在内存中

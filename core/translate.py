@@ -7,6 +7,8 @@ import traceback
 import openai
 from openai import AsyncOpenAI, APIStatusError, APIConnectionError
 
+from core.local_llm_manager import llm_manager
+
 DEFAULT_SYSTEM_PROMPT = """### 🎯 风格要求：
 1. **自然流畅**：符合目标语言母语者的表达习惯。
 2. **专业严谨**：准确翻译专有名词和术语。
@@ -19,6 +21,43 @@ def parse_srt(content: str) -> list:
     content = content.replace('\r\n', '\n').replace('\r', '\n')
     blocks = content.split('\n\n')
     return [b.strip() for b in blocks if b.strip()]
+
+class LocalClient:
+    def __init__(self, model_path, n_gpu_layers, n_ctx, idle_timeout):
+        self.model_path = model_path
+        self.n_gpu_layers = n_gpu_layers
+        self.n_ctx = n_ctx
+        self.idle_timeout = idle_timeout
+        self.chat = self.Chat(self)
+
+    class Chat:
+        def __init__(self, parent):
+            self.completions = self.Completions(parent)
+
+        class Completions:
+            def __init__(self, parent):
+                self.parent = parent
+
+            async def create(self, model, messages, temperature, max_tokens, stream=False):
+                # model parameter is ignored for local, using config's model_path
+                resp = await llm_manager.chat_completion(
+                    model_path=self.parent.model_path,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    n_gpu_layers=self.parent.n_gpu_layers,
+                    n_ctx=self.parent.n_ctx,
+                    idle_timeout=self.parent.idle_timeout
+                )
+                
+                # Wrap response in a SimpleNamespace-like object to mimic OpenAI's Response object
+                from types import SimpleNamespace
+                
+                choice = SimpleNamespace(
+                    message=SimpleNamespace(content=resp['choices'][0]['message']['content']),
+                    finish_reason=resp['choices'][0]['finish_reason']
+                )
+                return SimpleNamespace(choices=[choice])
 
 async def translate_batch(client, model_name, system_prompt, batch_content, batch_index, total_batches, semaphore, progress_state, previous_context="", progress_callback=None, temperature=1.0, max_tokens=8192, cancel_event=None):
     """
@@ -169,37 +208,51 @@ async def run_llm_translation(
         
     full_system_prompt = fixed_role_and_lang + fixed_format_instructions + custom_style_prompt
 
-    if not api_key:
-        raise ValueError("缺少大模型 API Key，请先在设置中配置。")
-
-    if not os.path.exists(input_srt_path):
-        raise FileNotFoundError(f"找不到输入的字幕文件: {input_srt_path}")
-
-    if not base_url:
-        base_url = "https://api.openai.com/v1"
-
-    # 提取用户配置的超时时间，并做下限防呆保护
-    timeout_cfg = llm_config.get("timeout_settings", {})
-    try:
-        user_connect = max(float(timeout_cfg.get("connect", 10.0)), 3.0)
-        user_read = max(float(timeout_cfg.get("read", 120.0)), 30.0)
-    except (TypeError, ValueError):
-        user_connect, user_read = 10.0, 120.0
+    engine = llm_config.get("engine", "api")
+    
+    if engine == "local":
+        local_cfg = llm_config.get("local_settings", {})
+        model_path = local_cfg.get("model_path", "")
+        if not model_path:
+            raise ValueError("未配置本地模型路径，请先在设置中选择模型文件。")
         
-    # 组装精细化的 httpx Timeout 控制器
-    timeout_config = httpx.Timeout(connect=user_connect, read=user_read, write=20.0, pool=10.0)
-
-    client_params = {
-        "api_key": api_key, 
-        "base_url": base_url,
-        "max_retries": 2
-    }
-    if actual_use_proxy:
-        client_params["http_client"] = httpx.AsyncClient(proxy=proxy_url, timeout=timeout_config)
+        # 本地引擎强制并发为 1 以防显存溢出
+        concurrent_workers = 1
+        client = LocalClient(
+            model_path=model_path,
+            n_gpu_layers=local_cfg.get("n_gpu_layers", -1),
+            n_ctx=local_cfg.get("n_ctx", 4096),
+            idle_timeout=local_cfg.get("idle_timeout", 300)
+        )
     else:
-        client_params["http_client"] = httpx.AsyncClient(proxy=None, trust_env=False, timeout=timeout_config)
+        if not api_key:
+            raise ValueError("缺少大模型 API Key，请先在设置中配置。")
 
-    client = AsyncOpenAI(**client_params)
+        if not base_url:
+            base_url = "https://api.openai.com/v1"
+
+        # 提取用户配置的超时时间，并做下限防呆保护
+        timeout_cfg = llm_config.get("timeout_settings", {})
+        try:
+            user_connect = max(float(timeout_cfg.get("connect", 10.0)), 3.0)
+            user_read = max(float(timeout_cfg.get("read", 120.0)), 30.0)
+        except (TypeError, ValueError):
+            user_connect, user_read = 10.0, 120.0
+            
+        # 组装精细化的 httpx Timeout 控制器
+        timeout_config = httpx.Timeout(connect=user_connect, read=user_read, write=20.0, pool=10.0)
+
+        client_params = {
+            "api_key": api_key, 
+            "base_url": base_url,
+            "max_retries": 2
+        }
+        if actual_use_proxy:
+            client_params["http_client"] = httpx.AsyncClient(proxy=proxy_url, timeout=timeout_config)
+        else:
+            client_params["http_client"] = httpx.AsyncClient(proxy=None, trust_env=False, timeout=timeout_config)
+
+        client = AsyncOpenAI(**client_params)
 
     try:
         if progress_callback:

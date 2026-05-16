@@ -44,7 +44,7 @@ export const store = reactive({
 
     // --- 全局配置参数 (完整镜像后端的 config.json 结构) ---
     config: {
-        system_settings: { network_proxy: "", enable_global_proxy: false },
+        system_settings: { network_proxy: "", enable_global_proxy: false, use_proxy_for_model_download: false, vram_mutual_exclusion: true },
         secrets: { hf_token: "" },
         model_settings: { model_size: "medium", download_root: "models" },
         transcribe_settings: { 
@@ -57,6 +57,7 @@ export const store = reactive({
         vad_settings: { vad_filter: true },
         ffmpeg_settings: { audio_track: "0:a:0", start_time: "", end_time: "" },
         llm_settings: {
+            engine: "api",
             active_profile_id: "default",
             profiles: [
                 {
@@ -73,6 +74,12 @@ export const store = reactive({
                     timeout_settings: { connect: 15, read: 300 }
                 }
             ],
+            local_settings: {
+                model_path: "",
+                n_gpu_layers: -1,
+                n_ctx: 4096,
+                idle_timeout: 300
+            },
             target_language: "zh",
             use_network_proxy: false
         },

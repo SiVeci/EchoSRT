@@ -80,6 +80,8 @@ export const getLlmModels = async (apiKey, baseUrl) => {
     return await res.json();
 };
 
+export const getLocalLlmModels = () => fetchGet('/api/llm/local_models');
+
 export const getAsrModels = async (apiKey, baseUrl) => {
     const res = await fetch(`${API_BASE}/api/asr/models?api_key=${encodeURIComponent(apiKey)}&base_url=${encodeURIComponent(baseUrl)}`);
     if (!res.ok) {

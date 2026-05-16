@@ -3,12 +3,13 @@ import asyncio
 from multiprocessing import Process, Queue
 from queue import Empty
 
-from ..state import q_transcribe, q_translate, global_tasks_status, global_cancel_events, update_task_status, get_task_status
+from ..state import q_transcribe, q_translate, global_tasks_status, global_cancel_events, update_task_status, get_task_status, gpu_lock
 from ..ws_manager import manager
 
 from core.whisper_engine import worker_process_loop, transcribe_audio, unload_model
 from core.srt_formatter import generate_srt
 from core.api_transcribe import run_api_transcription
+from core.local_llm_manager import llm_manager
 from faster_whisper.utils import _MODELS
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
@@ -102,7 +103,6 @@ async def process_transcribe_task(task_id, config_payload, loop):
         if task_status.get("current_step") in ["transcribing", "translating"]:
             print(f"[识别车间] 任务 {task_id} 已在后续处理中，忽略并发抢占。")
             return
-        await update_task_status(task_id, {"current_step": "transcribing"})
 
     try:
         old_translated_path = os.path.join(task_dir, "translated.srt")
@@ -120,6 +120,7 @@ async def process_transcribe_task(task_id, config_payload, loop):
         engine = transcribe_settings.get("engine", "local")
 
         if engine == "api":
+            await update_task_status(task_id, {"current_step": "transcribing"})
             online_asr_settings = config_payload.get("online_asr_settings", {})
             def api_progress_callback(msg_text):
                 msg = {"status": "processing", "step": "transcribing", "message": msg_text}
@@ -161,64 +162,73 @@ async def process_transcribe_task(task_id, config_payload, loop):
         else:
             model_settings = config_payload.get("model_settings", {})
             vad_settings = config_payload.get("vad_settings", {})
+            use_lock = system_settings.get("vram_mutual_exclusion", True)
 
-            # 确保子进程存活
-            ensure_worker_running()
+            lock_ctx = gpu_lock if use_lock else asyncio.Lock()
 
-            monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
+            async with lock_ctx:
+                await update_task_status(task_id, {"current_step": "transcribing"})
+                if use_lock:
+                    print(f"[识别车间] 任务 {task_id} 已获得 GPU 锁，正在清理可能驻留的本地 LLM...")
+                    await llm_manager.async_release_model()
 
-            # 向子进程投递任务
-            whisper_task_queue.put((
-                task_id,
-                audio_path,
-                output_srt,
-                model_settings,
-                transcribe_settings,
-                vad_settings,
-                system_settings
-            ))
+                # 确保子进程存活
+                ensure_worker_running()
 
-            # 开始在主进程阻塞读取消息，直到收到 done 或 error
-            process_error = None
-            while True:
-                if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
-                    monitor_task.cancel()
-                    force_kill_worker()
-                    raise asyncio.CancelledError("任务已被手动中断")
+                monitor_task = asyncio.create_task(monitor_download(task_id, model_settings.get("download_root", "models"), model_settings.get("model_size", "large-v2")))
 
-                try:
-                    # 0.5 秒超时轮询，避免完全卡死线程，同时能够响应取消或其他事件
-                    msg = await loop.run_in_executor(None, whisper_result_queue.get, True, 0.5)
-                    msg_type = msg.get("type")
-                    if msg.get("task_id") != task_id:
-                        continue # 忽略残留的旧消息
+                # 向子进程投递任务
+                whisper_task_queue.put((
+                    task_id,
+                    audio_path,
+                    output_srt,
+                    model_settings,
+                    transcribe_settings,
+                    vad_settings,
+                    system_settings
+                ))
 
-                    if msg_type == "status":
-                        # 如果子进程报告开始读取/下载模型，则前端显示进度
-                        if "正在读取" in msg.get("message", ""):
-                            pass # monitor_task is running
-                        elif "模型加载完毕" in msg.get("message", ""):
+                # 开始在主进程阻塞读取消息，直到收到 done 或 error
+                process_error = None
+                while True:
+                    if task_id in global_cancel_events and global_cancel_events[task_id].is_set():
+                        monitor_task.cancel()
+                        force_kill_worker()
+                        raise asyncio.CancelledError("任务已被手动中断")
+
+                    try:
+                        # 0.5 秒超时轮询，避免完全卡死线程，同时能够响应取消或其他事件
+                        msg = await loop.run_in_executor(None, whisper_result_queue.get, True, 0.5)
+                        msg_type = msg.get("type")
+                        if msg.get("task_id") != task_id:
+                            continue # 忽略残留的旧消息
+
+                        if msg_type == "status":
+                            # 如果子进程报告开始读取/下载模型，则前端显示进度
+                            if "正在读取" in msg.get("message", ""):
+                                pass # monitor_task is running
+                            elif "模型加载完毕" in msg.get("message", ""):
+                                monitor_task.cancel()
+                            await manager.send_json({"status": "processing", "step": "transcribing", "message": msg.get("message")}, task_id)
+                        elif msg_type == "progress":
+                            await manager.send_json({"status": "processing", "step": "transcribing", "progress": msg.get("progress"), "text": msg.get("text")}, task_id)
+                        elif msg_type == "error":
+                            process_error = Exception(msg.get("message"))
                             monitor_task.cancel()
-                        await manager.send_json({"status": "processing", "step": "transcribing", "message": msg.get("message")}, task_id)
-                    elif msg_type == "progress":
-                        await manager.send_json({"status": "processing", "step": "transcribing", "progress": msg.get("progress"), "text": msg.get("text")}, task_id)
-                    elif msg_type == "error":
-                        process_error = Exception(msg.get("message"))
-                        monitor_task.cancel()
-                        break
-                    elif msg_type == "done":
-                        monitor_task.cancel()
-                        break
-                except Empty:
-                    # 检查进程是否意外死亡
-                    if not whisper_process.is_alive():
-                        process_error = Exception("Whisper 推理子进程意外崩溃！(可能发生了 Segmentation Fault 或 Out of Memory)")
-                        monitor_task.cancel()
-                        break
-                    await asyncio.sleep(0) # 让出控制权
+                            break
+                        elif msg_type == "done":
+                            monitor_task.cancel()
+                            break
+                    except Empty:
+                        # 检查进程是否意外死亡
+                        if not whisper_process.is_alive():
+                            process_error = Exception("Whisper 推理子进程意外崩溃！(可能发生了 Segmentation Fault 或 Out of Memory)")
+                            monitor_task.cancel()
+                            break
+                        await asyncio.sleep(0) # 让出控制权
 
-            if process_error:
-                raise process_error
+                if process_error:
+                    raise process_error
 
         # 下游处理
         if "translate" in steps:

@@ -1,11 +1,12 @@
 import os
 import asyncio
 
-from ..state import q_translate, global_tasks_status, global_cancel_events, update_task_status, get_task_status
+from ..state import q_translate, global_tasks_status, global_cancel_events, update_task_status, get_task_status, gpu_lock
 from ..ws_manager import manager
 import json
 
 from core.translate import run_llm_translation
+from .transcribe import whisper_task_queue # For UNLOAD signaling
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
@@ -20,7 +21,6 @@ async def process_translate_task(task_id, config_payload, loop):
         if task_status.get("current_step") == "translating":
             print(f"[翻译车间] 任务 {task_id} 已在处理中，忽略并发抢占。")
             return
-        await update_task_status(task_id, {"current_step": "translating"})
 
     try:
         input_srt = os.path.join(task_dir, "original.srt")
@@ -31,40 +31,56 @@ async def process_translate_task(task_id, config_payload, loop):
         llm_config = config_payload.get("llm_settings", {})
         system_config = config_payload.get("system_settings", {})
         
-        def translate_progress_callback(msg_text):
-            msg = {"status": "processing", "step": "translating", "message": msg_text}
-            loop.create_task(manager.send_json(msg, task_id))
+        # --- 显存互斥调度机制 ---
+        engine = llm_config.get("engine", "api")
+        use_lock = system_config.get("vram_mutual_exclusion", True)
+        
+        lock_ctx = gpu_lock if (engine == "local" and use_lock) else asyncio.Lock() # Dummy lock if not needed
+        if engine == "local" and not use_lock:
+            lock_ctx = asyncio.Lock() # Just a local dummy lock
+
+        async with lock_ctx:
+            await update_task_status(task_id, {"current_step": "translating"})
+            if engine == "local" and use_lock:
+                print(f"[翻译车间] 任务 {task_id} 已获得 GPU 锁，正在向 Whisper 发送卸载指令...")
+                if whisper_task_queue:
+                    whisper_task_queue.put(("UNLOAD",))
+                    await asyncio.sleep(1) # 给子进程一点响应时间
+
+            def translate_progress_callback(msg_text):
+                msg = {"status": "processing", "step": "translating", "message": msg_text}
+                loop.create_task(manager.send_json(msg, task_id))
+                
+            await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
             
-        await manager.send_json({"status": "processing", "step": "translating", "message": "正在并发请求大模型翻译..."}, task_id)
-        
-        cancel_event = global_cancel_events.get(task_id)
-        
-        # 封装异步任务以支持 first_completed 抢占机制
-        trans_task = asyncio.create_task(
-            run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback, cancel_event)
-        )
-        
-        if cancel_event:
-            wait_cancel_task = asyncio.create_task(cancel_event.wait())
-            done, pending = await asyncio.wait(
-                [trans_task, wait_cancel_task], return_when=asyncio.FIRST_COMPLETED
+            cancel_event = global_cancel_events.get(task_id)
+            
+            # 封装异步任务以支持 first_completed 抢占机制
+            trans_task = asyncio.create_task(
+                run_llm_translation(input_srt, output_translated, llm_config, system_config, translate_progress_callback, cancel_event)
             )
-            for p in pending:
-                p.cancel()
-            if wait_cancel_task in done:
-                # 优雅阻断：确保底层的 OpenAI 协程也被取消，避免 Http Client 孤儿报错
-                trans_task.cancel()
-                try:
-                    await trans_task
-                except asyncio.CancelledError:
-                    pass
-                raise asyncio.CancelledError()
             
-            # 抛出 trans_task 可能产生的异常
-            if trans_task.exception():
-                raise trans_task.exception()
-        else:
-            await trans_task
+            if cancel_event:
+                wait_cancel_task = asyncio.create_task(cancel_event.wait())
+                done, pending = await asyncio.wait(
+                    [trans_task, wait_cancel_task], return_when=asyncio.FIRST_COMPLETED
+                )
+                for p in pending:
+                    p.cancel()
+                if wait_cancel_task in done:
+                    # 优雅阻断：确保底层的 OpenAI 协程也被取消，避免 Http Client 孤儿报错
+                    trans_task.cancel()
+                    try:
+                        await trans_task
+                    except asyncio.CancelledError:
+                        pass
+                    raise asyncio.CancelledError()
+                
+                # 抛出 trans_task 可能产生的异常
+                if trans_task.exception():
+                    raise trans_task.exception()
+            else:
+                await trans_task
 
         # [薛定谔修复] 将当时使用的目标语种固化到该任务专属的 meta.json 中
         target_lang = llm_config.get("target_language", "zh")

@@ -75,27 +75,45 @@ def _migrate_config_internal(config: dict) -> bool:
     changed = False
     
     # 1. 迁移 llm_settings
-    if "llm_settings" in config and "profiles" not in config["llm_settings"]:
+    if "llm_settings" in config:
         old_llm = config["llm_settings"]
-        new_profile = {
-            "id": "default",
-            "name": "默认方案",
-            "api_key": old_llm.get("api_key", ""),
-            "base_url": old_llm.get("base_url", "https://api.openai.com/v1"),
-            "model_name": old_llm.get("model_name", "gpt-4o"),
-            "batch_size": old_llm.get("batch_size", 100),
-            "concurrent_workers": old_llm.get("concurrent_workers", 3),
-            "system_prompt": old_llm.get("system_prompt", ""),
-            "timeout_settings": old_llm.get("timeout_settings", {"connect": 15, "read": 300}),
-            "max_tokens": old_llm.get("max_tokens", 8192),
-            "temperature": old_llm.get("temperature", 1.0)
-        }
-        config["llm_settings"] = {
-            "active_profile_id": "default",
-            "profiles": [new_profile],
-            "target_language": old_llm.get("target_language", "chs"),
-            "use_network_proxy": old_llm.get("use_network_proxy", False)
-        }
+        if "profiles" not in old_llm:
+            new_profile = {
+                "id": "default",
+                "name": "默认方案",
+                "api_key": old_llm.get("api_key", ""),
+                "base_url": old_llm.get("base_url", "https://api.openai.com/v1"),
+                "model_name": old_llm.get("model_name", "gpt-4o"),
+                "batch_size": old_llm.get("batch_size", 100),
+                "concurrent_workers": old_llm.get("concurrent_workers", 3),
+                "system_prompt": old_llm.get("system_prompt", ""),
+                "timeout_settings": old_llm.get("timeout_settings", {"connect": 15, "read": 300}),
+                "max_tokens": old_llm.get("max_tokens", 8192),
+                "temperature": old_llm.get("temperature", 1.0)
+            }
+            config["llm_settings"] = {
+                "active_profile_id": "default",
+                "profiles": [new_profile],
+                "target_language": old_llm.get("target_language", "chs"),
+                "use_network_proxy": old_llm.get("use_network_proxy", False)
+            }
+            changed = True
+        
+        # 补全 engine 和 local_settings
+        if "engine" not in config["llm_settings"]:
+            config["llm_settings"]["engine"] = "api"
+            changed = True
+        if "local_settings" not in config["llm_settings"]:
+            config["llm_settings"]["local_settings"] = {
+                "model_path": "",
+                "n_gpu_layers": -1,
+                "n_ctx": 4096,
+                "idle_timeout": 300
+            }
+            changed = True
+
+    if "system_settings" in config and "vram_mutual_exclusion" not in config["system_settings"]:
+        config["system_settings"]["vram_mutual_exclusion"] = True
         changed = True
 
     # 2. 迁移 online_asr_settings
@@ -138,9 +156,10 @@ async def get_config():
     def _read():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
-            if _migrate_config_internal(config):
-                _save_config_sync(config)
-            return config
+            
+        if _migrate_config_internal(config):
+            _save_config_sync(config)
+        return config
         
     try:
         async with config_lock:
@@ -401,6 +420,19 @@ def _fetch_openai_models(api_key: str, base_url: str, filter_keywords=None):
 
 def get_llm_models(api_key: str, base_url: str):
     return _fetch_openai_models(api_key, base_url)
+
+def get_local_llm_models():
+    """扫描 models/llm/ 目录下的 .gguf 文件"""
+    llm_dir = os.path.join(os.getcwd(), "models", "llm")
+    if not os.path.exists(llm_dir):
+        os.makedirs(llm_dir, exist_ok=True)
+        return []
+    
+    models = []
+    for f in os.listdir(llm_dir):
+        if f.endswith(".gguf"):
+            models.append(os.path.join("models", "llm", f))
+    return sorted(models)
 
 def get_asr_models(api_key: str, base_url: str):
     return _fetch_openai_models(api_key, base_url, filter_keywords=["whisper", "asr", "audio", "speech", "stt", "sensevoice", "paraformer"])

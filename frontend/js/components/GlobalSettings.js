@@ -38,6 +38,23 @@ export default {
 
             <div style="margin-bottom: 20px;">
                 <div style="font-weight: bold; color: #303133; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <el-icon style="font-size: 18px; color: #F56C6C;"><Cpu /></el-icon> GPU 显存调度管理
+                </div>
+                <div style="color: #909399; font-size: 13px; margin-bottom: 15px;">
+                    针对具有 12GB 或更低显存的用户，开启此项可防止本地识别与本地翻译同时加载导致的溢出崩溃。
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px; background: #fdf6f6; padding: 15px; border-radius: 4px; border: 1px solid #fde2e2;">
+                    <el-switch v-model="store.config.system_settings.vram_mutual_exclusion" active-text="开启显存互斥排队" @change="handleSaveConfig"></el-switch>
+                    <div style="font-size: 12px; color: #F56C6C; flex: 1; line-height: 1.3;">
+                        开启后，本地识别与本地翻译将互不抢占显存；24GB 显存用户可关闭此项以提速。
+                    </div>
+                </div>
+            </div>
+
+            <el-divider border-style="dashed"></el-divider>
+
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: bold; color: #303133; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
                     <el-icon style="font-size: 18px; color: #E6A23C;"><FolderOpened /></el-icon> 媒体库扫描管理
                 </div>
                 <div style="color: #909399; font-size: 13px; margin-bottom: 15px;">

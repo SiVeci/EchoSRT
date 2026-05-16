@@ -1,6 +1,6 @@
 const { ref, computed } = Vue;
 import { store, addLog, connectTaskMonitor } from '../store.js';
-import { executeTask, retryTask, uploadAsset, getLlmModels, updateConfig } from '../api.js';
+import { executeTask, retryTask, uploadAsset, getLlmModels, updateConfig, getLocalLlmModels } from '../api.js';
 
 export default {
     name: 'TabLLM',
@@ -56,55 +56,96 @@ export default {
                 <el-collapse v-model="activeCollapse" style="border-top: none; border-bottom: none;">
                     <el-collapse-item name="1">
                         <template #title>
-                            <span style="color: #909399; font-size: 13px;">点击展开更多翻译细节设置 (并发、批次、Prompt 等)</span>
+                            <span style="color: #909399; font-size: 13px;">点击展开更多翻译细节设置 (引擎切换、本地配置、Prompt 等)</span>
                         </template>
                         <el-form :model="activeProfile" label-width="140px" label-position="left" size="default">
-                            <el-form-item>
-                                <template #label>
-                                    <span style="display: inline-flex; align-items: center;">
-                                        API Base URL
-                                        <el-tooltip content="兼容 OpenAI 格式的 API 接口地址。官方接口请填 https://api.openai.com/v1，第三方或中转代理服务请填入对应地址。" placement="top" trigger="click">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
-                                        </el-tooltip>
-                                    </span>
-                                </template>
-                                <el-input v-model="activeProfile.base_url" placeholder="例如: https://api.openai.com/v1"></el-input>
+                            <el-form-item label="翻译引擎">
+                                <el-radio-group v-model="store.config.llm_settings.engine">
+                                    <el-radio label="api">在线 API 模式</el-radio>
+                                    <el-radio label="local">本地离线引擎</el-radio>
+                                </el-radio-group>
                             </el-form-item>
 
-                            <el-form-item label="API Key">
-                                <el-input v-model="activeProfile.api_key" type="password" show-password placeholder="sk-..."></el-input>
-                            </el-form-item>
+                            <template v-if="store.config.llm_settings.engine === 'api'">
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            API Base URL
+                                            <el-tooltip content="兼容 OpenAI 格式的 API 接口地址。官方接口请填 https://api.openai.com/v1，第三方或中转代理服务请填入对应地址。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
+                                    <el-input v-model="activeProfile.base_url" placeholder="例如: https://api.openai.com/v1"></el-input>
+                                </el-form-item>
 
-                            <el-form-item>
-                                <template #label>
-                                    <span style="display: inline-flex; align-items: center;">
-                                        API 访问代理
-                                        <el-tooltip content="调用大语言模型 API 时，通过配置的全局网络代理进行访问。" placement="top" trigger="click">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
-                                        </el-tooltip>
-                                    </span>
-                                </template>
-                                <el-switch v-model="store.config.llm_settings.use_network_proxy" :disabled="!store.config.system_settings.enable_global_proxy"></el-switch>
-                            </el-form-item>
+                                <el-form-item label="API Key">
+                                    <el-input v-model="activeProfile.api_key" type="password" show-password placeholder="sk-..."></el-input>
+                                </el-form-item>
 
-                            <el-form-item>
-                                <template #label>
-                                    <span style="display: inline-flex; align-items: center;">
-                                        Model Name
-                                        <el-tooltip content="指定用于翻译的大语言模型名称。官方接口可填 'gpt-4o' 等，中转代理请视服务商支持填写。点击右侧按钮可直接拉取可用列表。" placement="top" trigger="click">
-                                            <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
-                                        </el-tooltip>
-                                    </span>
-                                </template>
-                                <div style="display: flex; gap: 10px; width: 100%;">
-                                    <el-select v-model="activeProfile.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
-                                        <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
-                                    </el-select>
-                                    <el-button type="primary" plain @click="refreshModels" :loading="isFetchingModels" title="从 API 供应商拉取可用模型">
-                                        <el-icon><Refresh /></el-icon>
-                                    </el-button>
-                                </div>
-                            </el-form-item>
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            API 访问代理
+                                            <el-tooltip content="调用大语言模型 API 时，通过配置的全局网络代理进行访问。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
+                                    <el-switch v-model="store.config.llm_settings.use_network_proxy" :disabled="!store.config.system_settings.enable_global_proxy"></el-switch>
+                                </el-form-item>
+
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            Model Name
+                                            <el-tooltip content="指定用于翻译的大语言模型名称。官方接口可填 'gpt-4o' 等，中转代理请视服务商支持填写。点击右侧按钮可直接拉取可用列表。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
+                                    <div style="display: flex; gap: 10px; width: 100%;">
+                                        <el-select v-model="activeProfile.model_name" placeholder="请选择或输入模型名称" filterable allow-create default-first-option style="flex: 1;">
+                                            <el-option v-for="model in store.dicts.llm_models" :key="model" :label="model" :value="model"></el-option>
+                                        </el-select>
+                                        <el-button type="primary" plain @click="refreshModels" :loading="isFetchingModels" title="从 API 供应商拉取可用模型">
+                                            <el-icon><Refresh /></el-icon>
+                                        </el-button>
+                                    </div>
+                                </el-form-item>
+                            </template>
+
+                            <template v-else>
+                                <el-form-item label="本地模型文件">
+                                    <div style="display: flex; gap: 10px; width: 100%;">
+                                        <el-select v-model="store.config.llm_settings.local_settings.model_path" placeholder="请选择 models/llm 目录下的 GGUF 模型" filterable style="flex: 1;">
+                                            <el-option v-for="m in localModels" :key="m" :label="m" :value="m"></el-option>
+                                        </el-select>
+                                        <el-button type="primary" plain @click="refreshLocalModels" :loading="isFetchingLocalModels" title="重新扫描 models/llm 目录">
+                                            <el-icon><Refresh /></el-icon>
+                                        </el-button>
+                                    </div>
+                                    <div style="font-size: 12px; color: #909399; margin-top: 5px;">
+                                        请将 .gguf 格式的量化模型放入项目的 <code>models/llm/</code> 目录下。
+                                    </div>
+                                </el-form-item>
+
+                                <el-form-item label="GPU 加速层数">
+                                    <el-slider v-model="store.config.llm_settings.local_settings.n_gpu_layers" :min="-1" :max="128" :step="1" show-input></el-slider>
+                                    <div style="font-size: 12px; color: #909399; line-height: 1.2;">
+                                        -1 代表尽可能全部加载到显存。如果显存不足，请调低此数值。
+                                    </div>
+                                </el-form-item>
+
+                                <el-form-item label="上下文长度">
+                                    <el-input-number v-model="store.config.llm_settings.local_settings.n_ctx" :min="512" :max="131072" :step="512"></el-input-number>
+                                </el-form-item>
+
+                                <el-form-item label="闲置释放时间">
+                                    <el-input-number v-model="store.config.llm_settings.local_settings.idle_timeout" :min="0" :max="3600" :step="60"></el-input-number>
+                                    <span style="margin-left: 8px; color: #909399;">秒 (0 代表不释放)</span>
+                                </el-form-item>
+                            </template>
 
                             <el-form-item>
                                 <template #label>
@@ -236,12 +277,31 @@ export default {
     setup() {
         const isUploading = ref(false);
         const isFetchingModels = ref(false);
+        const isFetchingLocalModels = ref(false);
+        const localModels = ref([]);
         const activeCollapse = ref([]); // 默认折叠状态
 
         const activeProfile = computed(() => {
             const id = store.config.llm_settings.active_profile_id;
             return store.config.llm_settings.profiles.find(p => p.id === id) || store.config.llm_settings.profiles[0];
         });
+
+        const refreshLocalModels = async () => {
+            isFetchingLocalModels.value = true;
+            try {
+                localModels.value = await getLocalLlmModels();
+                if (localModels.value.length === 0) {
+                    ElementPlus.ElMessage.info("未在 models/llm 目录下检测到 GGUF 模型文件。");
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error("获取本地模型失败: " + e.message);
+            } finally {
+                isFetchingLocalModels.value = false;
+            }
+        };
+
+        // 初始加载一次本地模型列表
+        refreshLocalModels();
 
         // 方案管理逻辑
         const handleProfileCommand = async (command) => {
@@ -328,8 +388,13 @@ export default {
         const runTranslate = async () => {
             if (!store.taskId || !store.assets.hasOriginalSrt) return;
             
-            if (!activeProfile.value.api_key) {
+            if (store.config.llm_settings.engine === 'api' && !activeProfile.value.api_key) {
                 ElementPlus.ElMessage.warning("执行失败：请先填写大模型的 API Key！");
+                return;
+            }
+            
+            if (store.config.llm_settings.engine === 'local' && !store.config.llm_settings.local_settings.model_path) {
+                ElementPlus.ElMessage.warning("执行失败：请先选择本地模型文件！");
                 return;
             }
 
@@ -368,8 +433,8 @@ export default {
         };
 
         return { 
-            store, isUploading, isFetchingModels, activeCollapse, pinnedLanguages, otherLanguages, fixedPrompt, 
-            activeProfile, handleProfileCommand, refreshModels, handleSrtUpload, runTranslate 
+            store, isUploading, isFetchingModels, isFetchingLocalModels, localModels, activeCollapse, pinnedLanguages, otherLanguages, fixedPrompt, 
+            activeProfile, handleProfileCommand, refreshModels, refreshLocalModels, handleSrtUpload, runTranslate 
         };
     }
 };

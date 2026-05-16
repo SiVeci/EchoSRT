@@ -46,6 +46,13 @@ def worker_process_loop(task_queue: Queue, result_queue: Queue):
             task = task_queue.get(timeout=300)
             if task is None: 
                 break
+            
+            # 支持优雅显存交接
+            if isinstance(task, tuple) and task[0] == "UNLOAD":
+                unload_model()
+                result_queue.put({"task_id": "system", "type": "unloaded"})
+                continue
+
         except Empty:
             print("[Whisper Worker] 5分钟无任务，主动退出释放显存。")
             sys.exit(0)
