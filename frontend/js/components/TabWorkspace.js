@@ -112,7 +112,7 @@ export default {
                             <div style="display: flex; align-items: center; gap: 4px;">
                                 <!-- 映射视频 (外部绝对路径) -->
                                 <el-dropdown v-if="scope.row.has_abs_video" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'video')">
-                                    <el-tag size="small" type="primary" effect="plain" style="cursor: pointer;">映射视频</el-tag>
+                                    <el-tag size="small" type="primary" effect="plain" style="cursor: pointer;">视频</el-tag>
                                     <template #dropdown>
                                         <el-dropdown-menu>
                                             <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
