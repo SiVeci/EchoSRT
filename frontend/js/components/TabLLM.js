@@ -116,7 +116,15 @@ export default {
                             </template>
 
                             <template v-else>
-                                <el-form-item label="本地模型文件">
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            本地模型文件
+                                            <el-tooltip content="请将下载好的 .gguf 格式模型文件放入项目根目录的 models/llm/ 文件夹中。系统会自动扫描该目录。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
                                     <div style="display: flex; gap: 10px; width: 100%;">
                                         <el-select v-model="store.config.llm_settings.local_settings.model_path" placeholder="请选择 models/llm 目录下的 GGUF 模型" filterable style="flex: 1;">
                                             <el-option v-for="m in localModels" :key="m" :label="m" :value="m"></el-option>
@@ -130,18 +138,42 @@ export default {
                                     </div>
                                 </el-form-item>
 
-                                <el-form-item label="GPU 加速层数">
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            GPU 加速层数
+                                            <el-tooltip content="决定将多少层模型神经网络卸载到显卡的 VRAM 中。填 -1 代表尽可能全部加载到 GPU 显存以获得最快速度。如果遇到 Out Of Memory 报错，请适当调低此数值以使用 CPU 内存作为补充。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
                                     <el-slider v-model="store.config.llm_settings.local_settings.n_gpu_layers" :min="-1" :max="128" :step="1" show-input></el-slider>
                                     <div style="font-size: 12px; color: #909399; line-height: 1.2;">
                                         -1 代表尽可能全部加载到显存。如果显存不足，请调低此数值。
                                     </div>
                                 </el-form-item>
 
-                                <el-form-item label="上下文长度">
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            上下文长度
+                                            <el-tooltip content="模型一次能处理的最大 Token 数量。翻译时系统会自动保留上一批次的最后几句作为上下文。建议设置为 4096 或 8192。设置过高会急剧增加显存占用，设置过低可能导致翻译到一半时因超长而截断。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
                                     <el-input-number v-model="store.config.llm_settings.local_settings.n_ctx" :min="512" :max="131072" :step="512"></el-input-number>
                                 </el-form-item>
 
-                                <el-form-item label="闲置释放时间">
+                                <el-form-item>
+                                    <template #label>
+                                        <span style="display: inline-flex; align-items: center;">
+                                            闲置释放时间
+                                            <el-tooltip content="当翻译任务完成后，模型在显存中继续驻留的倒计时。如果在该时间内没有新的翻译任务，模型将自动从显存卸载。填 0 代表永不自动释放。" placement="top" trigger="click">
+                                                <el-icon style="margin-left: 4px; cursor: pointer; color: #909399;" @click.stop.prevent><QuestionFilled /></el-icon>
+                                            </el-tooltip>
+                                        </span>
+                                    </template>
                                     <el-input-number v-model="store.config.llm_settings.local_settings.idle_timeout" :min="0" :max="3600" :step="60"></el-input-number>
                                     <span style="margin-left: 8px; color: #909399;">秒 (0 代表不释放)</span>
                                 </el-form-item>

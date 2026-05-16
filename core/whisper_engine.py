@@ -30,6 +30,12 @@ def unload_model():
         _cached_model = None
         _cached_model_params = None
         gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
         print("[*] Whisper 模型已从显存中卸载。")
 
 def worker_process_loop(task_queue: Queue, result_queue: Queue):
@@ -37,8 +43,7 @@ def worker_process_loop(task_queue: Queue, result_queue: Queue):
     独立运行的子进程循环。
     不断从 task_queue 获取任务，如果 5 分钟内没有新任务，则自动退出以彻底释放显存。
     """
-    _cached_model = None
-    _cached_model_params = None
+    global _cached_model, _cached_model_params
 
     while True:
         try:

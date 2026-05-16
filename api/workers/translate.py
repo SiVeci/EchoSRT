@@ -6,7 +6,7 @@ from ..ws_manager import manager
 import json
 
 from core.translate import run_llm_translation
-from .transcribe import whisper_task_queue # For UNLOAD signaling
+from . import transcribe # Import module dynamically for UNLOAD signaling
 
 WORKSPACE_DIR = os.path.abspath(os.path.join(os.getcwd(), "workspace"))
 
@@ -39,13 +39,35 @@ async def process_translate_task(task_id, config_payload, loop):
         if engine == "local" and not use_lock:
             lock_ctx = asyncio.Lock() # Just a local dummy lock
 
+        # 引擎感知优先调度 (Engine-Aware Priority Scheduler)
+        # 如果是本地 LLM 引擎且启用了显存互斥，翻译任务必须给“提取”和“识别”任务让路，避免模型互相踢出显存
+        if engine == "local" and use_lock:
+            while True:
+                has_prior_task = False
+                for t_state in global_tasks_status.values():
+                    if t_state.get("current_step") in ["pending_extract", "extracting", "pending_transcribe", "transcribing"]:
+                        has_prior_task = True
+                        break
+                if not has_prior_task:
+                    break
+                # 静默退让，等待识别任务跑完
+                await asyncio.sleep(1.0)
+
         async with lock_ctx:
             await update_task_status(task_id, {"current_step": "translating"})
             if engine == "local" and use_lock:
                 print(f"[翻译车间] 任务 {task_id} 已获得 GPU 锁，正在向 Whisper 发送卸载指令...")
-                if whisper_task_queue:
-                    whisper_task_queue.put(("UNLOAD",))
-                    await asyncio.sleep(1) # 给子进程一点响应时间
+                if transcribe.whisper_process and transcribe.whisper_process.is_alive() and transcribe.whisper_task_queue and transcribe.whisper_result_queue:
+                    transcribe.whisper_task_queue.put(("UNLOAD",))
+                    print("[翻译车间] 正在等待 Whisper 子进程释放显存...")
+                    try:
+                        while True:
+                            msg = await loop.run_in_executor(None, transcribe.whisper_result_queue.get, True, 10.0)
+                            if isinstance(msg, dict) and msg.get("type") == "unloaded":
+                                print("[翻译车间] 成功收到 Whisper 显存释放确认。")
+                                break
+                    except Exception as e:
+                        print(f"[翻译车间] 等待显存释放确认超时或异常 (模型可能已释放): {e}")
 
             def translate_progress_callback(msg_text):
                 msg = {"status": "processing", "step": "translating", "message": msg_text}
