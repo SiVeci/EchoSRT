@@ -315,11 +315,11 @@ export default {
                 store.assets.hasOriginalSrt = true;
                 store.activeStep = 4;
                 store.refreshTasksTrigger++;
-                addLog(`外部字幕上传成功！任务 ID: \${res.task_id}`, "success");
+                addLog(`外部字幕上传成功！任务 ID: ${res.task_id}`, "success");
                 ElementPlus.ElMessage.success("生肉字幕上传成功，可以直接开始翻译！");
             } catch (e) {
-                addLog(`字幕上传失败: \${e.message}`, "error");
-                ElementPlus.ElMessage.error(`上传失败: \${e.message}`);
+                addLog(`字幕上传失败: ${e.message}`, "error");
+                ElementPlus.ElMessage.error(`上传失败: ${e.message}`);
             } finally {
                 isUploading.value = false;
             }

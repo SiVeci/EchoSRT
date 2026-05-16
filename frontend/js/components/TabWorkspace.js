@@ -46,9 +46,20 @@ export default {
                     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                         <span class="card-title"><el-icon style="margin-right:4px;"><DataBoard /></el-icon>流水线看板与资产库</span>
                         <div style="display: flex; gap: 10px;">
-                            <el-button type="danger" size="small" plain :disabled="taskList.length === 0" @click="clearAllTasks">
-                                <el-icon><Delete /></el-icon> 一键清空
-                            </el-button>
+                            <el-dropdown trigger="click" @command="handleClearCommand" :disabled="taskList.length === 0">
+                                <el-button type="danger" size="small" plain>
+                                    <el-icon><Delete /></el-icon> 资产清理 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                                </el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="all" icon="DeleteFilled">清空全部任务</el-dropdown-item>
+                                        <el-dropdown-item divided command="video" icon="VideoCamera">清理本地视频</el-dropdown-item>
+                                        <el-dropdown-item command="audio" icon="Headset">清理音频</el-dropdown-item>
+                                        <el-dropdown-item command="original" icon="Document">清理原声字幕</el-dropdown-item>
+                                        <el-dropdown-item command="translated" icon="ChatDotSquare">清理翻译字幕</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
                             <el-button type="danger" size="small" :disabled="!isAnyTaskRunning" @click="handleCancelAllTasks">
                                 中断全部任务
                             </el-button>
@@ -99,8 +110,18 @@ export default {
                     <el-table-column label="资产检查" width="200">
                         <template #default="scope">
                             <div style="display: flex; align-items: center; gap: 4px;">
-                                <el-dropdown v-if="scope.row.has_video" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'video')">
-                                    <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">视频</el-tag>
+                                <!-- 映射视频 (外部绝对路径) -->
+                                <el-dropdown v-if="scope.row.has_abs_video" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'video')">
+                                    <el-tag size="small" type="primary" effect="plain" style="cursor: pointer;">映射视频</el-tag>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                                <!-- 本地视频 (拖拽上传) -->
+                                <el-dropdown v-else-if="scope.row.has_video" trigger="click" @command="(cmd) => handleAssetCommand(cmd, scope.row, 'video')">
+                                    <el-tag size="small" type="success" effect="plain" style="cursor: pointer;">本地视频</el-tag>
                                     <template #dropdown>
                                         <el-dropdown-menu>
                                             <el-dropdown-item command="download" icon="Download">下载</el-dropdown-item>
@@ -313,6 +334,7 @@ export default {
                             if (targetIndex !== -1) {
                                 // O(1) 局部精准更新，UI 绝对无闪烁
                                 taskList.value[targetIndex].has_video = latestData.has_video;
+                                taskList.value[targetIndex].has_abs_video = latestData.has_abs_video;
                                 taskList.value[targetIndex].has_audio = latestData.has_audio;
                                 taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
                                 taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
@@ -377,6 +399,7 @@ export default {
                     const targetIndex = taskList.value.findIndex(t => t.task_id === row.task_id);
                     if (targetIndex !== -1) {
                         taskList.value[targetIndex].has_video = latestData.has_video;
+                        taskList.value[targetIndex].has_abs_video = latestData.has_abs_video;
                         taskList.value[targetIndex].has_audio = latestData.has_audio;
                         taskList.value[targetIndex].has_original_srt = latestData.has_original_srt;
                         taskList.value[targetIndex].has_translated_srt = latestData.has_translated_srt;
@@ -649,6 +672,63 @@ export default {
             } catch (e) { /* 用户点击取消 */ }
         };
 
+        const handleClearCommand = async (cmd) => {
+            if (cmd === 'all') {
+                clearAllTasks();
+                return;
+            }
+
+            const assetNameMap = { video: '本地视频', audio: '音频', original: '原声字幕', translated: '翻译字幕' };
+            const targetName = assetNameMap[cmd];
+
+            try {
+                await ElementPlus.ElMessageBox.confirm(
+                    `确定要批量删除所有任务的 <strong>[${targetName}]</strong> 吗？<br/>此操作将释放硬盘空间且不可恢复！`, 
+                    '批量清理资产', 
+                    { confirmButtonText: '确定清理', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: true }
+                );
+
+                let successCount = 0;
+                let skippedCount = 0;
+                const loading = ElementPlus.ElLoading.service({ lock: true, text: `正在批量清理 ${targetName}...` });
+
+                try {
+                    for (const task of taskList.value) {
+                        // 检查该任务是否有目标资产
+                        if (cmd === 'video' && !task.has_video) continue;
+                        if (cmd === 'audio' && !task.has_audio) continue;
+                        if (cmd === 'original' && !task.has_original_srt) continue;
+                        if (cmd === 'translated' && !task.has_translated_srt) continue;
+
+                        // 清理视频时，跳过外部映射视频
+                        if (cmd === 'video' && task.has_abs_video) {
+                            skippedCount++;
+                            continue;
+                        }
+
+                        try {
+                            await deleteTaskAsset(task.task_id, cmd);
+                            successCount++;
+                        } catch (err) {
+                            // 后端拦截（如最后一份资产）计入跳过
+                            skippedCount++;
+                        }
+                    }
+                } finally {
+                    loading.close();
+                    fetchTasks(); // 刷新列表以更新 UI 状态
+                    
+                    if (skippedCount > 0) {
+                        ElementPlus.ElMessage.warning(`清理完成：成功删除 ${successCount} 份，跳过 ${skippedCount} 份 (受保护的映射文件或不可删除的最后一份资产)。`);
+                    } else if (successCount > 0) {
+                        ElementPlus.ElMessage.success(`清理完成：成功释放了 ${successCount} 份 ${targetName}！`);
+                    } else {
+                        ElementPlus.ElMessage.info(`没有找到需要清理的 ${targetName}。`);
+                    }
+                }
+            } catch (e) { /* 用户取消 */ }
+        };
+
         // --- 媒体库扫描逻辑 ---
         const showLibraryModal = ref(false);
         const scanResults = ref([]);
@@ -708,7 +788,7 @@ export default {
             handleCancelAllTasks,
             isAnyTaskRunning,
             removeTask,
-            clearAllTasks,
+            handleClearCommand,
             batchRun,
             getStatusType,
             getStatusText,
