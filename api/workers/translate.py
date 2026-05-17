@@ -148,12 +148,9 @@ async def process_translate_task(task_id, config_payload, loop):
 async def worker_translate_loop():
     loop = asyncio.get_running_loop()
 
-    async def _run_task(t_id, payload):
-        try:
-            await process_translate_task(t_id, payload, loop)
-        finally:
-            q_translate.task_done()
-
     while True:
         task_id, config_payload = await q_translate.get()
-        asyncio.create_task(_run_task(task_id, config_payload))
+        try:
+            await process_translate_task(task_id, config_payload, loop)
+        finally:
+            q_translate.task_done()

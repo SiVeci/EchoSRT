@@ -266,12 +266,9 @@ async def process_transcribe_task(task_id, config_payload, loop):
 async def worker_transcribe_loop():
     loop = asyncio.get_running_loop()
 
-    async def _run_task(t_id, payload):
-        try:
-            await process_transcribe_task(t_id, payload, loop)
-        finally:
-            q_transcribe.task_done()
-
     while True:
         task_id, config_payload = await q_transcribe.get()
-        asyncio.create_task(_run_task(task_id, config_payload))
+        try:
+            await process_transcribe_task(task_id, config_payload, loop)
+        finally:
+            q_transcribe.task_done()
