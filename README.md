@@ -2,7 +2,7 @@
   <img src="frontend/logo.png" alt="EchoSRT Logo" width="180">
   <h1>EchoSRT 字幕工作台</h1>
   <p>
-    <img src="https://img.shields.io/badge/Version-v1.2.2-blue" alt="Version">
+    <img src="https://img.shields.io/badge/Version-v1.3.0-blue" alt="Version">
     <img src="https://img.shields.io/badge/Platform-Docker%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform">
     <img src="https://img.shields.io/badge/Python-3.10%20--%203.12-blue" alt="Python Version">
     <img src="https://img.shields.io/badge/Framework-FastAPI%20%7C%20Vue%203-orange" alt="Framework">
@@ -14,41 +14,51 @@
 
 ## 目录
 
-- [项目简介](#-项目简介)
-- [核心特性](#-核心特性)
-- [快速部署](#-快速部署)
-- [使用指南](#-使用指南)
-- [配置说明](#-配置说明)
-- [项目结构](#-项目结构)
-- [系统要求](#-系统要求)
-- [路线图](#-路线图)
-- [免责声明](#-免责声明)
+- [项目简介](#项目简介)
+- [核心特性](#核心特性)
+- [快速部署](#快速部署)
+- [使用指南](#使用指南)
+- [配置说明](#配置说明)
+- [项目结构](#项目结构)
+- [系统要求](#系统要求)
+- [路线图](#路线图)
+- [免责声明](#免责声明)
 
 ---
 
-## 🌟 项目简介
+## <img src="frontend/icons/zap.svg" width="20" height="20" align="absmiddle"> 项目简介
 
 **EchoSRT** 是一个音视频字幕自动化提取与翻译工具。提供 WebUI 工作台，支持本地 GPU/CPU 推理以及云端 API 处理，提供一站式、全自动流水线解决方案。
 
-> 📖 **完整文档**：[EchoSRT 文档站](https://siveci.github.io/EchoSRT) 包含安装指南、使用教程、架构说明、API 参考和部署方案。
+> <img src="frontend/icons/book.svg" width="16" height="16" align="absmiddle"> **完整文档**：[EchoSRT 文档站](https://siveci.github.io/EchoSRT) 包含安装指南、使用教程、架构说明、API 参考和部署方案。
 
-## ✨ 核心特性
+## <img src="frontend/icons/layers.svg" width="20" height="20" align="absmiddle"> 核心特性
 
-- **双引擎语音识别 (ASR)**：
-  - **本地引擎**：内置 `faster-whisper`，自动探测 NVIDIA CUDA 硬件加速或回退 CPU 模式，支持 VAD 静音过滤、Beam Size 等高阶参数。
-  - **云端引擎**：支持 OpenAI 格式的语音 API，针对超大文件实现了突破 25MB 限制的物理切片与时间戳重排机制。
-- **大语言模型智能翻译 (LLM)**：基于并发信号量 (`asyncio.Semaphore`) 实现字幕分块异步翻译。支持 DeepSeek、ChatGPT 等任意兼容 OpenAI 接口的模型，结合上下文自动润色，生成"熟肉"字幕。
-- **API 多方案管理系统**：支持为 ASR 和 LLM 分别预设多套 API 配置（Base URL / Key / Model），一键快速切换方案池。
+### 语音识别 (ASR)
+
+- **本地推理引擎**：内置 `faster-whisper`，自动探测 NVIDIA CUDA 加速或回退 CPU 模式，支持 VAD 静音过滤、Beam Size 等高阶参数。
+- **云端 API 引擎**：兼容 OpenAI 格式的语音 API，针对超大文件实现突破 25MB 限制的物理切片与时间戳重排机制。
+
+### 大语言模型翻译 (LLM)
+
+- **在线 API 翻译**：基于并发信号量 (`asyncio.Semaphore`) 实现字幕分块异步翻译。支持 DeepSeek、ChatGPT 等任意兼容 OpenAI 接口的模型，结合上下文自动润色。
+- **本地离线推理**：支持 GGUF 量化模型，基于 `llama-cpp-python` 实现本地推理。将模型文件放入 `models/llm/` 目录后，通过 WebUI 配置 GPU 加速层数、上下文长度与闲置释放时间。
+- **GPU 显存互斥管理**：开启后本地识别 (`faster-whisper`) 与本地翻译 (GGUF) 互不抢占显存，防止因并发加载导致的 OOM 崩溃。
+
+### 系统与运维
+
+- **API 多方案管理**：支持为 ASR 和 LLM 分别预设多套 API 配置（Base URL / Key / Model），一键切换方案池。
 - **自动化非阻塞流水线**：后端基于 FastAPI + `asyncio.Queue` 实现多任务调度，支持批量下发处理。
 - **断点续传与状态持久化**：任务中断或服务重启后，自动从断点（提音/识别/翻译）恢复，无需从头开始。
+- **任务资产清理**：支持按类型（视频/音频/原声/翻译字幕）批量清理任务资产，释放磁盘空间。
 - **可视化 Web 工作台**：Vue 3 前端，提供实时 WebSocket 状态同步、滚动日志输出与看板式资产管理。
-- **强大的分流代理机制**：支持按模块（模型下载 / 云端 ASR / LLM 翻译）独立接管 HTTP/SOCKS5 网络代理，三路互不干扰。
+- **分流代理机制**：支持按模块（模型下载 / 云端 ASR / LLM 翻译）独立接管 HTTP/SOCKS5 网络代理，三路互不干扰。
 - **媒体库扫描引擎**：自动扫描磁盘目录，基于文件指纹（MD5）去重导入，支持状态自愈。
-- **多平台 Docker 部署**：提供 CPU 和 GPU 独立镜像，支持快捷部署，NAS 友好（PUID/PGID 权限对齐）。
+- **多平台 Docker 部署**：提供 CPU 和 GPU 独立镜像，NAS 友好（PUID/PGID 权限对齐）。
 
 ---
 
-## 🚀 快速部署
+## <img src="frontend/icons/deploy.svg" width="20" height="20" align="absmiddle"> 快速部署
 
 ### 方案一：Docker 部署 (推荐)
 
@@ -110,7 +120,7 @@ python app.py
 
 ---
 
-## 🛠️ 使用指南
+## <img src="frontend/icons/book.svg" width="20" height="20" align="absmiddle"> 使用指南
 
 ### 1. 访问 WebUI 工作台
 - 浏览器打开 `http://127.0.0.1:8000` 或 `http://[远程IP]:8000` 进入工作台。
@@ -128,19 +138,20 @@ python app.py
 - 填入 API Base URL 和 API Key。
 - 自定义 **Prompt** 强制大模型输出特定风格（例如语气、设定、特定角色人名映射等）。
 - 支持多套 API 方案预设，在 **[语音识别]** 和 **[LLM 翻译]** 标签页中管理。
+- **本地引擎**：将 GGUF 量化模型放入 `models/llm/` 目录后，在 LLM 翻译标签页切换至"本地离线引擎"，选择模型文件并配置 GPU 加速层数、上下文长度与闲置释放时间。
 
 ---
 
-## ⚙️ 配置说明
+## <img src="frontend/icons/gear.svg" width="20" height="20" align="absmiddle"> 配置说明
 
 服务首次启动时自动从 `config/config.example.json` 生成 `config/config.json`。主要配置项：
 
 | 配置域 | 说明 |
 |:---|:---|
-| `system_settings` | 全局网络代理开关、代理 URL（HTTP/SOCKS5） |
+| `system_settings` | 全局网络代理开关、代理 URL（HTTP/SOCKS5）、GPU 显存互斥开关 (`vram_mutual_exclusion`) |
 | `model_settings` | Whisper 模型大小与下载目录 |
 | `transcribe_settings` | ASR 引擎选择、语言、Beam Size、VAD 等 |
-| `llm_settings` | LLM API 多方案池、并发数、System Prompt |
+| `llm_settings` | LLM API 多方案池、并发数、System Prompt；`local_settings` 子项包含本地模型路径、GPU 加速层数、上下文长度与闲置释放时间 |
 | `online_asr_settings` | 云端 ASR API 多方案池、说话人识别 |
 | `ffmpeg_settings` | 音轨选择、时间裁剪参数 |
 | `library` | 媒体库扫描路径与格式白名单 |
@@ -149,7 +160,7 @@ python app.py
 
 ---
 
-## 📁 项目结构 (Monorepo)
+## <img src="frontend/icons/folder.svg" width="20" height="20" align="absmiddle"> 项目结构
 ```text
 ├── api/                    # FastAPI 后端
 │   ├── routers/            # Web API 路由 (config, tasks, library, websocket)
@@ -157,7 +168,8 @@ python app.py
 │   ├── workers/            # 异步队列消费者 (提音、识别、翻译)
 │   ├── state.py            # 全局状态管理
 │   └── ws_manager.py       # WebSocket 连接管理器
-├── core/                   # 底层算法库 (FFmpeg、Whisper、API转录、翻译、SRT格式化)
+├── core/                   # 底层算法库 (FFmpeg、Whisper、API转录、翻译、SRT格式化、本地LLM)
+│   └── local_llm_manager.py # 本地 LLM 推理管理器 (GGUF / llama-cpp-python)
 ├── frontend/               # Vue 3 前端 (CDN 模式，免构建)
 │   └── js/components/      # UI 组件 (工作区、ASR、翻译、控制台、设置)
 ├── config/                 # 配置文件 (自动生成 config.json)
@@ -173,7 +185,7 @@ python app.py
 
 ---
 
-## ⚙️ 系统要求
+## <img src="frontend/icons/cpu.svg" width="20" height="20" align="absmiddle"> 系统要求
 
 | 维度 | 要求 |
 | :--- | :--- |
@@ -182,9 +194,9 @@ python app.py
 | **Python** | 3.10 - 3.12（推荐 3.12.x） |
 | **硬件(推荐)** | 至少 8GB 内存；使用本地 GPU 引擎推荐至少 6GB+ 显存的 NVIDIA 显卡 |
 
-> **💡 Docker 权限说明**：如果在 NAS (如群晖、Unraid 等) 上部署遇到读写权限的问题，增加环境变量 `-e PUID=1000` 和 `-e PGID=1000` (替换为实际的 UID/GID)，容器将会自动对齐挂载目录的读写权限。
+> <img src="frontend/icons/cpu.svg" width="16" height="16" align="absmiddle"> **Docker 权限说明**：如果在 NAS (如群晖、Unraid 等) 上部署遇到读写权限的问题，增加环境变量 `-e PUID=1000` 和 `-e PGID=1000` (替换为实际的 UID/GID)，容器将会自动对齐挂载目录的读写权限。
 
-## 🗺️ 路线图
+## <img src="frontend/icons/chart.svg" width="20" height="20" align="absmiddle"> 路线图
 
 - [ ] **API 自动轮询与故障自愈**：在遇到可恢复错误（如 HTTP 429/401）时，自动切换方案池中的下一个可用方案。
 - [ ] **任务插队与优先级调度**：后端队列支持紧急任务优先处理。
@@ -194,7 +206,7 @@ python app.py
 
 ---
 
-## ⚠️ 免责声明
+## <img src="frontend/icons/alert.svg" width="20" height="20" align="absmiddle"> 免责声明
 1. **合法使用**：本项目仅供技术研究、个人视频剪辑与字幕制作辅助使用。
 2. **接口规范**：请用户自行准备合规的 LLM API 及云端识别 API，确保使用不违反当地法律法规及服务商的使用条款。
 3. **开源许可**：本项目基于 MIT 协议开源，完全免费，由第三方模型引起的任何输出内容问题概不负责。
