@@ -117,6 +117,7 @@ async def process_transcribe_task(task_id, config_payload, loop):
         output_srt = os.path.join(task_dir, "original.srt")
         transcribe_settings = config_payload.get("transcribe_settings", {})
         system_settings = config_payload.get("system_settings", {})
+        secrets_settings = config_payload.get("secrets", {})
         engine = transcribe_settings.get("engine", "local")
 
         if engine == "api":
@@ -185,7 +186,8 @@ async def process_transcribe_task(task_id, config_payload, loop):
                     model_settings,
                     transcribe_settings,
                     vad_settings,
-                    system_settings
+                    system_settings,
+                    secrets_settings
                 ))
 
                 # 开始在主进程阻塞读取消息，直到收到 done 或 error

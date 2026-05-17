@@ -345,11 +345,16 @@ async def start_model_download(model_id: str, payload: dict):
     proxies = {"http": _dl_proxy, "https": _dl_proxy} if actual_use_proxy else {"http": None, "https": None}
     
     download_root = "models"
+    hf_token = ""
     try:
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                download_root = json.load(f).get("model_settings", {}).get("download_root", "models")
+                config_data = json.load(f)
+                download_root = config_data.get("model_settings", {}).get("download_root", "models")
+                hf_token = config_data.get("secrets", {}).get("hf_token", "")
     except Exception: pass
+    
+    token_kwargs = {"token": hf_token} if hf_token else {}
     
     from huggingface_hub import snapshot_download
     repo_id = _MODELS.get(model_id, model_id) if isinstance(_MODELS, dict) else (f"Systran/faster-distil-whisper-{model_id.replace('distil-', '')}" if "distil" in model_id else f"Systran/faster-whisper-{model_id}")
@@ -379,7 +384,7 @@ async def start_model_download(model_id: str, payload: dict):
         _background_tasks.add(monitor_task)
         monitor_task.add_done_callback(_background_tasks.discard)
         try:
-            await loop.run_in_executor(None, lambda: snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies))
+            await loop.run_in_executor(None, lambda: snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies, **token_kwargs))
             global_downloading_models.pop(model_id, None)
             await manager.send_json({"status": "completed", "step": "done", "model_id": model_id, "message": f"模型 {model_id} 下载完成！"}, f"sys_download_{model_id}")
         except Exception as e:

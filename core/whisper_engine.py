@@ -62,7 +62,7 @@ def worker_process_loop(task_queue: Queue, result_queue: Queue):
             print("[Whisper Worker] 5分钟无任务，主动退出释放显存。")
             sys.exit(0)
             
-        task_id, audio_path, output_srt, model_settings, transcribe_settings, vad_settings, system_config = task
+        task_id, audio_path, output_srt, model_settings, transcribe_settings, vad_settings, system_config, secrets_settings = task
         
         try:
             model_size = model_settings.get("model_size", "large-v2")
@@ -72,6 +72,9 @@ def worker_process_loop(task_queue: Queue, result_queue: Queue):
             proxy_url = system_config.get("network_proxy", "")
 
             actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
+
+            hf_token = secrets_settings.get("hf_token", "") if secrets_settings else ""
+            token_kwargs = {"token": hf_token} if hf_token else {}
 
             if shutil.which("nvidia-smi"):
                 device = "cuda"
@@ -100,7 +103,7 @@ def worker_process_loop(task_queue: Queue, result_queue: Queue):
                     
                 proxies = {"http": _dl_proxy, "https": _dl_proxy} if actual_use_proxy else {"http": None, "https": None}
                 try:
-                    snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies)
+                    snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies, **token_kwargs)
                 except Exception as e:
                     print(f"[*] 模型预下载检查因网络失败或被跳过，将尝试直接使用本地缓存。原因: {e}")
                 
@@ -155,7 +158,8 @@ def transcribe_audio(
     model_settings: dict,
     transcribe_settings: dict,
     vad_settings: dict,
-    system_config: dict
+    system_config: dict,
+    secrets_settings: dict = None
 ):
     global _cached_model, _cached_model_params
 
@@ -166,6 +170,9 @@ def transcribe_audio(
     proxy_url = system_config.get("network_proxy", "")
 
     actual_use_proxy = enable_global_proxy and use_proxy and proxy_url
+
+    hf_token = secrets_settings.get("hf_token", "") if secrets_settings else ""
+    token_kwargs = {"token": hf_token} if hf_token else {}
 
     if shutil.which("nvidia-smi"):
         device = "cuda"
@@ -196,7 +203,7 @@ def transcribe_audio(
             
         proxies = {"http": _dl_proxy, "https": _dl_proxy} if actual_use_proxy else {"http": None, "https": None}
         try:
-            snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies)
+            snapshot_download(repo_id=repo_id, cache_dir=custom_model_dir, proxies=proxies, **token_kwargs)
         except Exception as e:
             print(f"[*] 模型预下载检查因网络失败或被跳过，将尝试直接使用本地缓存。原因: {e}")
         # -----------------------------
