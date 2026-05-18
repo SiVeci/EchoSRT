@@ -19,6 +19,7 @@
 - [快速部署](#快速部署)
 - [使用指南](#使用指南)
 - [配置说明](#配置说明)
+- [API 端点参考](#api-端点参考)
 - [项目结构](#项目结构)
 - [系统要求](#系统要求)
 - [路线图](#路线图)
@@ -36,24 +37,26 @@
 
 ### 语音识别 (ASR)
 
-- **本地推理引擎**：内置 `faster-whisper`，自动探测 NVIDIA CUDA 加速或回退 CPU 模式，支持 VAD 静音过滤、Beam Size 等高阶参数。
-- **云端 API 引擎**：兼容 OpenAI 格式的语音 API，针对超大文件实现突破 25MB 限制的物理切片与时间戳重排机制。
+- **本地推理引擎**：内置 `faster-whisper`，自动探测 NVIDIA CUDA 加速或回退 CPU 模式，支持 VAD 静音过滤、Beam Size 等高阶参数。子进程隔离运行，崩溃不影响主服务。
+- **云端 API 引擎**：兼容 OpenAI 格式的语音 API，针对超大文件实现突破 25MB 限制的物理切片与时间戳重排机制。额外支持**说话人识别**（Speaker Diarization）与**词级时间戳**。
 
 ### 大语言模型翻译 (LLM)
 
 - **在线 API 翻译**：基于并发信号量 (`asyncio.Semaphore`) 实现字幕分块异步翻译。支持 DeepSeek、ChatGPT 等任意兼容 OpenAI 接口的模型，结合上下文自动润色。
-- **本地离线推理**：支持 GGUF 量化模型，基于 `llama-cpp-python` 实现本地推理。将模型文件放入 `models/llm/` 目录后，通过 WebUI 配置 GPU 加速层数、上下文长度与闲置释放时间。
-- **GPU 显存互斥管理**：开启后本地识别 (`faster-whisper`) 与本地翻译 (GGUF) 互不抢占显存，防止因并发加载导致的 OOM 崩溃。
+- **本地离线推理**：支持 GGUF 量化模型，基于 `llama-cpp-python` 实现本地推理。将模型文件放入 `models/llm/` 目录后，通过 WebUI 配置 GPU 加速层数、上下文长度与闲置释放时间。显存不足时自动下调 `max_tokens` 防止 OOM。
+- **GPU 显存互斥管理**：开启后本地识别 (`faster-whisper`) 与本地翻译 (GGUF) 互不抢占显存，翻译任务自动给识别任务让路，防止因并发加载导致的 OOM 崩溃。
 
 ### 系统与运维
 
 - **API 多方案管理**：支持为 ASR 和 LLM 分别预设多套 API 配置（Base URL / Key / Model），一键切换方案池。
 - **自动化非阻塞流水线**：后端基于 FastAPI + `asyncio.Queue` 实现多任务调度，支持批量下发处理。
 - **断点续传与状态持久化**：任务中断或服务重启后，自动从断点（提音/识别/翻译）恢复，无需从头开始。
-- **任务资产清理**：支持按类型（视频/音频/原声/翻译字幕）批量清理任务资产，释放磁盘空间。
-- **可视化 Web 工作台**：Vue 3 前端，提供实时 WebSocket 状态同步、滚动日志输出与看板式资产管理。
+- **任务中断与取消**：支持单个任务中断或一键中断全部任务，优雅中止 FFmpeg/API 请求并清理临时文件。
+- **FFmpeg 高级控制**：支持多音轨选择、指定时间范围裁剪（`-ss` / `-to`），适配多音轨 MKV 等复杂场景。
+- **任务资产清理**：支持按类型（视频/音频/原声/翻译字幕）批量清理任务资产，释放磁盘空间。内置 500MB 磁盘安全冗余检查。
+- **可视化 Web 工作台**：Vue 3 前端，提供实时 WebSocket 状态同步、滚动日志输出与看板式资产管理。支持拖拽排序任务。
 - **分流代理机制**：支持按模块（模型下载 / 云端 ASR / LLM 翻译）独立接管 HTTP/SOCKS5 网络代理，三路互不干扰。
-- **媒体库扫描引擎**：自动扫描磁盘目录，基于文件指纹（MD5）去重导入，支持状态自愈。
+- **媒体库扫描引擎**：自动扫描磁盘目录，基于文件指纹（路径 + 大小 + mtime）去重导入，支持状态自愈与 20+ 种媒体格式。
 - **多平台 Docker 部署**：提供 CPU 和 GPU 独立镜像，NAS 友好（PUID/PGID 权限对齐）。
 
 ---
@@ -83,6 +86,7 @@ docker run -d --name echosrt-cpu \
   -p 8000:8000 \
   -v $(pwd)/workspace:/app/workspace \
   -v $(pwd)/models:/app/models \
+  -v $(pwd)/config:/app/config \
   ghcr.io/siveci/echosrt:cpu-latest
 
 # GPU 版本 (需增加 --gpus all 参数，端口改用 8001 避免与 CPU 实例冲突)
@@ -91,6 +95,7 @@ docker run -d --name echosrt-gpu \
   -p 8001:8000 \
   -v $(pwd)/workspace:/app/workspace \
   -v $(pwd)/models:/app/models \
+  -v $(pwd)/config:/app/config \
   ghcr.io/siveci/echosrt:gpu-latest
 ```
 
@@ -111,8 +116,12 @@ docker build -t echosrt:gpu-local -f Dockerfile.gpu .
 # Windows: 下载 FFmpeg 并在项目根目录创建 bin/ffmpeg/bin/ 放入 ffmpeg.exe
 # Linux: sudo apt install ffmpeg
 
-# 2. 安装 Python 依赖
+# 2. 安装基础 Python 依赖
 pip install -r requirements.txt
+
+# [可选] 若需使用本地大模型(GGUF)翻译并开启 CUDA 加速，请安装预编译的 llama-cpp-python
+# （注：以下链接以 CUDA 12.2 为例。若为其他 CUDA 版本，请将 cu122 替换为对应版本号如 cu118、cu121 等）
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
 
 # 3. 启动后台服务与 WebUI
 python app.py
@@ -148,15 +157,97 @@ python app.py
 
 | 配置域 | 说明 |
 |:---|:---|
-| `system_settings` | 全局网络代理开关、代理 URL（HTTP/SOCKS5）、GPU 显存互斥开关 (`vram_mutual_exclusion`) |
-| `model_settings` | Whisper 模型大小与下载目录 |
-| `transcribe_settings` | ASR 引擎选择、语言、Beam Size、VAD 等 |
-| `llm_settings` | LLM API 多方案池、并发数、System Prompt；`local_settings` 子项包含本地模型路径、GPU 加速层数、上下文长度与闲置释放时间 |
-| `online_asr_settings` | 云端 ASR API 多方案池、说话人识别 |
-| `ffmpeg_settings` | 音轨选择、时间裁剪参数 |
-| `library` | 媒体库扫描路径与格式白名单 |
+| `system_settings` | 全局网络代理开关、代理 URL（HTTP/SOCKS5）、GPU 显存互斥开关 (`vram_mutual_exclusion`)、最大上传文件限制 (`max_upload_size_mb`) |
+| `secrets` | Hugging Face 认证令牌 (`hf_token`)，用于访问受限模型 |
+| `model_settings` | Whisper 模型大小（tiny / base / small / medium / large-v2 / large-v3 / distil-*）与下载目录 |
+| `transcribe_settings` | ASR 引擎选择 (`local` / `api`)、语言、Beam Size、VAD 静音过滤、温度采样、幻觉抑制阈值等高阶参数 |
+| `vad_settings` | VAD 过滤开关与高级 VAD 参数 |
+| `ffmpeg_settings` | 音轨选择 (`audio_track`)、时间范围裁剪 (`start_time` / `end_time`) |
+| `llm_settings` | LLM 引擎选择 (`api` / `local`)、API 多方案池（含并发数、批次大小、超时、System Prompt）；`local_settings` 包含 GGUF 模型路径、GPU 加速层数、上下文长度与闲置释放时间；`target_language` 翻译目标语言 |
+| `online_asr_settings` | 云端 ASR API 多方案池、说话人识别 (`speaker_labels`)、词级时间戳 (`word_timestamps`) |
+| `library` | 媒体库扫描路径、格式白名单（20+ 种）、自动扫描开关 |
 
 所有配置均可通过 WebUI 在线修改并即时生效。
+
+---
+
+## <img src="frontend/icons/layers.svg" width="20" height="20" align="absmiddle"> 支持格式
+
+### 识别/输入格式
+
+| 类型 | 格式 |
+|:---|:---|
+| **视频** | `.mp4` `.mkv` `.avi` `.mov` `.flv` `.wmv` `.webm` `.ts` `.m2ts` `.rmvb` `.vob` `.asf` |
+| **音频** | `.mp3` `.wav` `.m4a` `.flac` `.aac` `.ogg` `.wma` `.opus` |
+| **字幕** | `.srt`（拖拽或上传已有字幕直接进入翻译阶段） |
+
+### Whisper 模型
+
+| 规模 | 推荐场景 |
+|:---|:---|
+| `tiny` / `base` | 快速测试、低配设备 |
+| `small` / `medium` | 均衡精度与速度 |
+| `large-v2` / `large-v3` | 最高精度（默认 `large-v2`） |
+| `distil-*` | 蒸馏模型，推理更快、显存占用更低 |
+
+---
+
+## <img src="frontend/icons/gear.svg" width="20" height="20" align="absmiddle"> API 端点参考
+
+> 访问 `/docs` 可查看自动生成的 Swagger 交互式文档。
+
+### 配置与系统
+
+| 方法 | 端点 | 说明 |
+|:---|:---|:---|
+| `GET` | `/api/system/info` | 系统信息（GPU 检测） |
+| `GET` | `/api/config` | 获取完整配置 |
+| `POST` | `/api/config` | 更新配置 |
+| `POST` | `/api/config/restore` | 恢复默认配置 |
+| `POST` | `/api/proxy/test` | 代理连通性测试 |
+| `GET` | `/api/languages` | 获取支持语言列表 |
+| `GET` | `/api/models` | 获取 Whisper 模型列表 |
+| `DELETE` | `/api/models/{model_id}` | 删除已下载模型 |
+| `POST` | `/api/models/{model_id}/download` | 下载指定模型 |
+| `GET` | `/api/models/download_status` | 模型下载进度 |
+| `POST` | `/api/llm/models` | 获取远程 LLM 模型列表 |
+| `GET` | `/api/llm/local_models` | 获取本地 GGUF 模型列表 |
+| `POST` | `/api/asr/models` | 获取云端 ASR 模型列表 |
+
+### 任务与资产
+
+| 方法 | 端点 | 说明 |
+|:---|:---|:---|
+| `POST` | `/api/upload/{asset_type}` | 上传资产（`video` / `audio` / `srt`） |
+| `POST` | `/api/task/execute` | 执行任务流水线 |
+| `POST` | `/api/task/{task_id}/retry` | 断点重试任务 |
+| `GET` | `/api/download/{task_id}?type=` | 下载产物（`original` / `translated`） |
+| `GET` | `/api/task/{task_id}/assets` | 获取单个任务资产信息 |
+| `GET` | `/api/tasks` | 获取所有任务列表 |
+| `DELETE` | `/api/task/{task_id}` | 删除任务及全部资产 |
+| `DELETE` | `/api/task/{task_id}/asset/{asset_type}` | 删除单个资产 |
+| `POST` | `/api/tasks/reorder` | 任务排序 |
+| `POST` | `/api/task/{task_id}/cancel` | 中断单个任务 |
+| `POST` | `/api/tasks/cancel_all` | 中断全部任务 |
+
+### 媒体库
+
+| 方法 | 端点 | 说明 |
+|:---|:---|:---|
+| `GET` | `/api/library/paths` | 获取扫描路径列表 |
+| `POST` | `/api/library/paths` | 添加扫描路径 |
+| `DELETE` | `/api/library/paths` | 删除扫描路径 |
+| `POST` | `/api/library/scan` | 触发媒体库扫描 |
+| `GET` | `/api/library/discoveries` | 获取已发现文件 |
+| `POST` | `/api/library/import` | 批量导入为任务 |
+
+### WebSocket 与状态
+
+| 方法 | 端点 | 说明 |
+|:---|:---|:---|
+| `WS` | `/ws/progress/{task_id}` | 任务实时状态推送 |
+| `GET` | `/api/task/{task_id}/status` | HTTP 轮询任务状态 |
+| `GET` | `/api/pipeline/status` | 全局流水线状态 |
 
 ---
 
@@ -173,11 +264,17 @@ python app.py
 ├── frontend/               # Vue 3 前端 (CDN 模式，免构建)
 │   └── js/components/      # UI 组件 (工作区、ASR、翻译、控制台、设置)
 ├── config/                 # 配置文件 (自动生成 config.json)
+├── tests/                  # 测试套件 (单元测试、集成测试、API 测试)
 ├── docs/                   # Docusaurus 文档站点
 ├── .github/workflows/      # CI/CD (Docker 发布 + Pages 部署)
-├── models/                 # Faster-Whisper 离线模型存储
+├── models/                 # Faster-Whisper 离线模型 & 本地 LLM 存储
+│   └── llm/                # GGUF 量化模型存放目录
 ├── workspace/              # 音视频及字幕任务产物
 ├── app.py                  # WebUI & API 后端启动入口
+├── pytest.ini              # 测试配置
+├── tox.ini                 # 测试环境管理
+├── requirements.txt        # 生产依赖
+├── requirements_test.txt   # 测试依赖 (pytest, respx 等)
 ├── docker-compose.yml      # Docker Compose 编排
 ├── Dockerfile              # CPU Docker 镜像
 └── Dockerfile.gpu          # GPU (CUDA) Docker 镜像
@@ -201,6 +298,8 @@ python app.py
 - [ ] **API 自动轮询与故障自愈**：在遇到可恢复错误（如 HTTP 429/401）时，自动切换方案池中的下一个可用方案。
 - [ ] **任务插队与优先级调度**：后端队列支持紧急任务优先处理。
 - [ ] **全局队列进度透明化**：流水线看板显示具体进度百分比与子状态（如"正在提音 45%"）。
+- [ ] **翻译断点续传与语义缓存**：引入基于原文 MD5 缓存机制，翻译中断后跳过已完成段落，避免重复消耗 API 额度。
+- [ ] **SRT 格式对齐算法优化**：增强翻译后 SRT 组装逻辑，应对 LLM 输出行数不一致的情况。
 
 > 完整规划与已完成的特性请见 [文档站 - 更新日志](https://siveci.github.io/EchoSRT/docs/development/changelog)。
 

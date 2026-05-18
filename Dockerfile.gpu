@@ -1,4 +1,3 @@
-# 使用 NVIDIA 官方提供的带有 CUDA 12.2 和 cuDNN 的运行时镜像作为基础
 FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
 
 # 设置非交互式安装和环境变量
@@ -19,19 +18,24 @@ RUN apt-get update && \
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/python3.10 /usr/bin/python3
 
+# [新增] 升级基础打包工具，防止由于老版本 pip 导致拉取 wheel 包失败
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
 # 3. 设置工作目录
 WORKDIR /app
 
 # 4. 首先拷贝 requirements 以利用 Docker 构建缓存
 COPY requirements.txt .
 
-# 5. 安装 Python 依赖 (Faster Whisper 底层的 CTranslate2 会自动检测 CUDA)
-RUN pip install --no-cache-dir -r requirements.txt
+# 5. 安装 Python 依赖 
+# [核心修改] 添加 --extra-index-url 直接拉取适配 CUDA 12.2 的预编译大模型依赖包，跳过本地 C++ 编译
+RUN pip install --no-cache-dir -r requirements.txt \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
 
 # 6. 拷贝整个项目代码到容器中
 COPY . .
 
-# [新增] 备份默认配置文件到不受挂载影响的根目录，防止被用户的空 volume 覆盖
+# [原逻辑] 备份默认配置文件到不受挂载影响的根目录，防止被用户的空 volume 覆盖
 RUN cp config/config.example.json /app/config.example.json
 
 # 7. 转换换行符为 Unix 格式并赋予 entrypoint 脚本执行权限

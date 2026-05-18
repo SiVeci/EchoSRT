@@ -1,6 +1,6 @@
 name: Build and Publish Docker Images
 
-# 触发条件：当你发布一个新的 Release 时，或者手动点击运行
+# 触发条件：手动触发
 on:
   workflow_dispatch:
 
@@ -17,6 +17,15 @@ jobs:
       packages: write
 
     steps:
+      # [新增] 清理无用的预装软件
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -30,7 +39,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }} # GitHub 自动生成的 Token，无需手动配置
 
-      # Docker 镜像名字必须是小写，这个脚本可以自动把你的用户名转为小写防止报错
       - name: Lowercase image name
         run: |
           echo "IMAGE_NAME_LOWER=$(echo ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
@@ -45,8 +53,9 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME_LOWER }}:cpu-latest
             ${{ env.IMAGE_NAME_LOWER }}:cpu-${{ github.event.release.tag_name || 'dev' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # [修改] 添加 scope=cpu，隔离 CPU 环境缓存
+          cache-from: type=gha,scope=cpu
+          cache-to: type=gha,mode=max,scope=cpu
 
       # 2. 编译并推送 GPU 镜像
       - name: Build and push GPU image
@@ -58,5 +67,6 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME_LOWER }}:gpu-latest
             ${{ env.IMAGE_NAME_LOWER }}:gpu-${{ github.event.release.tag_name || 'dev' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # [修改] 添加 scope=gpu，隔离 GPU 环境缓存
+          cache-from: type=gha,scope=gpu
+          cache-to: type=gha,mode=max,scope=gpu
