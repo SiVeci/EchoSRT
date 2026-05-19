@@ -55,3 +55,4 @@ requirements_test.txt
 tox.ini
 tests/
 pytest.ini
+AGENTS.md
