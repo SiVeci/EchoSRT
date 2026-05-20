@@ -4,7 +4,7 @@
   <p>
     <img src="https://img.shields.io/badge/Version-v1.3.0-blue" alt="Version">
     <img src="https://img.shields.io/badge/Platform-Docker%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform">
-    <img src="https://img.shields.io/badge/Python-3.10%20--%203.12-blue" alt="Python Version">
+    <img src="https://img.shields.io/badge/Python-3.9%20--%203.13-blue" alt="Python Version">
     <img src="https://img.shields.io/badge/Framework-FastAPI%20%7C%20Vue%203-orange" alt="Framework">
     <img src="https://img.shields.io/badge/License-MIT-lightgrey" alt="License">
   </p>
@@ -264,17 +264,12 @@ python app.py
 ├── frontend/               # Vue 3 前端 (CDN 模式，免构建)
 │   └── js/components/      # UI 组件 (工作区、ASR、翻译、控制台、设置)
 ├── config/                 # 配置文件 (自动生成 config.json)
-├── tests/                  # 测试套件 (单元测试、集成测试、API 测试)
-├── docs/                   # Docusaurus 文档站点
-├── .github/workflows/      # CI/CD (Docker 发布 + Pages 部署)
+├── .github/workflows/      # CI/CD (Docker 发布)
 ├── models/                 # Faster-Whisper 离线模型 & 本地 LLM 存储
 │   └── llm/                # GGUF 量化模型存放目录
 ├── workspace/              # 音视频及字幕任务产物
 ├── app.py                  # WebUI & API 后端启动入口
-├── pytest.ini              # 测试配置
-├── tox.ini                 # 测试环境管理
 ├── requirements.txt        # 生产依赖
-├── requirements_test.txt   # 测试依赖 (pytest, respx 等)
 ├── docker-compose.yml      # Docker Compose 编排
 ├── Dockerfile              # CPU Docker 镜像
 └── Dockerfile.gpu          # GPU (CUDA) Docker 镜像
@@ -288,7 +283,7 @@ python app.py
 | :--- | :--- |
 | **操作系统** | Windows 10+ / Linux |
 | **Docker** | 支持 linux/amd64 (GPU 版需具备 NVIDIA Runtime) |
-| **Python** | 3.10 - 3.12（推荐 3.12.x） |
+| **Python** | 3.9 - 3.13（推荐 3.12.x） |
 | **硬件(推荐)** | 至少 8GB 内存；使用本地 GPU 引擎推荐至少 6GB+ 显存的 NVIDIA 显卡 |
 
 > <img src="frontend/icons/cpu.svg" width="16" height="16" align="absmiddle"> **Docker 权限说明**：如果在 NAS (如群晖、Unraid 等) 上部署遇到读写权限的问题，增加环境变量 `-e PUID=1000` 和 `-e PGID=1000` (替换为实际的 UID/GID)，容器将会自动对齐挂载目录的读写权限。

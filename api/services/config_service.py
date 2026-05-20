@@ -84,7 +84,7 @@ def _migrate_config_internal(config: dict) -> bool:
                 "api_key": old_llm.get("api_key", ""),
                 "base_url": old_llm.get("base_url", "https://api.openai.com/v1"),
                 "model_name": old_llm.get("model_name", "gpt-4o"),
-                "batch_size": old_llm.get("batch_size", 100),
+                "batch_size": old_llm.get("batch_size", 50),
                 "concurrent_workers": old_llm.get("concurrent_workers", 3),
                 "system_prompt": old_llm.get("system_prompt", ""),
                 "timeout_settings": old_llm.get("timeout_settings", {"connect": 15, "read": 300}),
@@ -94,7 +94,7 @@ def _migrate_config_internal(config: dict) -> bool:
             config["llm_settings"] = {
                 "active_profile_id": "default",
                 "profiles": [new_profile],
-                "target_language": old_llm.get("target_language", "chs"),
+                "target_language": old_llm.get("target_language", "zh"),
                 "use_network_proxy": old_llm.get("use_network_proxy", False)
             }
             changed = True
