@@ -1,0 +1,81 @@
+name: Sync GitHub Wiki
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sync-wiki.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-github-wiki
+  cancel-in-progress: true
+
+jobs:
+  sync-wiki:
+    name: Mirror Wiki into docs/wiki
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out main repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone GitHub Wiki
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .wiki-source
+          git clone --depth 1 "https://github.com/${GITHUB_REPOSITORY}.wiki.git" .wiki-source
+
+          if ! find .wiki-source -type f -name '*.md' -print -quit | grep -q .; then
+            echo "No Markdown pages were found in the Wiki repository." >&2
+            exit 1
+          fi
+
+      - name: Replace local Wiki mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          WIKI_SHA="$(git -C .wiki-source rev-parse HEAD)"
+
+          rm -rf docs/wiki
+          mkdir -p docs/wiki
+          rsync -a --exclude='.git/' .wiki-source/ docs/wiki/
+
+          cat > docs/wiki/_MIRROR_INFO.md <<EOF
+          # EchoSRT Wiki mirror
+
+          This directory is generated automatically from the separate GitHub Wiki repository.
+
+          - Source: https://github.com/${GITHUB_REPOSITORY}/wiki
+          - Wiki repository: https://github.com/${GITHUB_REPOSITORY}.wiki.git
+          - Wiki commit: \`${WIKI_SHA}\`
+
+          Do not edit files in this directory directly. Edit the GitHub Wiki instead; this workflow will mirror the changes here.
+          EOF
+
+          rm -rf .wiki-source
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- docs/wiki && [ -z "$(git status --porcelain -- docs/wiki)" ]; then
+            echo "Wiki mirror is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs/wiki
+          git commit -m "docs: sync GitHub Wiki"
+          git push
